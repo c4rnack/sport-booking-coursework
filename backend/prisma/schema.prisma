@@ -1,15 +1,147 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+}
+
+enum LoyaltyTier {
+  STANDARD
+  PREMIUM
+  CORPORATE
+}
+
+enum MembershipType {
+  SINGLE
+  MONTHLY
+  CORPORATE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id            String         @id @default(uuid())
+  fullName      String
+  email         String         @unique
+  passwordHash  String
+  phone         String?
+  avatarUrl     String?
+  preferences   String[]       @default([])
+  bonusPoints   Int            @default(0)
+  role          UserRole       @default(CLIENT)
+  loyaltyTier   LoyaltyTier    @default(STANDARD)
+  createdAt     DateTime       @default(now())
+
+  memberships   Membership[]
+  bookings      Booking[]
+  notifications Notification[]
+}
+
+model Membership {
+  id           String         @id @default(uuid())
+  userId       String
+  type         MembershipType
+  price        Float
+  visitsLeft   Int?
+  expiresAt    DateTime?
+  companyName  String?
+  maxEmployees Int?
+  createdAt    DateTime       @default(now())
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Facility {
+  id             String         @id @default(uuid())
+  name           String
+  address        String
+  sportType      String
+  capacity       Int
+  baseHourlyRate Float
+
+  sections       SportSection[]
+}
+
+model Trainer {
+  id             String         @id @default(uuid())
+  fullName       String
+  specialization String
+  rating         Float          @default(5.0)
+
+  sections       SportSection[]
+}
+
+model SportSection {
+  id          String         @id @default(uuid())
+  title       String
+  sportType   String         // football, yoga, fitness, swimming...
+  skillLevel  String         // beginner, intermediate, pro
+  ageCategory String         // kids, teens, adult
+  basePrice   Float
+  facilityId  String
+  trainerId   String
+
+  facility    Facility       @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  trainer     Trainer        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  slots       ScheduleSlot[]
+  bookings    Booking[]
+}
+
+model ScheduleSlot {
+  id             String       @id @default(uuid())
+  sectionId      String
+  startTime      DateTime
+  endTime        DateTime
+  availableSpots Int
+
+  section        SportSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  bookings       Booking[]
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  userId        String
+  sectionId     String
+  slotId        String
+  totalPrice    Float
+  appliedAddons String[]      @default([])
+  status        BookingStatus @default(CONFIRMED)
+  createdAt     DateTime      @default(now())
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section       SportSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  slot          ScheduleSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+}
+
+model Promotion {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  discountPercent Float
+  validUntil      DateTime
+  createdAt       DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  eventType String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
