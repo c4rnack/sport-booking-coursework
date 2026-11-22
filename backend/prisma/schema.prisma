@@ -24,6 +24,11 @@ enum MembershipType {
   CORPORATE
 }
 
+enum MembershipStatus {
+  ACTIVE
+  CANCELLED
+}
+
 enum BookingStatus {
   PENDING
   CONFIRMED
@@ -50,17 +55,18 @@ model User {
 }
 
 model Membership {
-  id           String         @id @default(uuid())
+  id           String           @id @default(uuid())
   userId       String
   type         MembershipType
+  status       MembershipStatus @default(ACTIVE)
   price        Float
   visitsLeft   Int?
   expiresAt    DateTime?
   companyName  String?
   maxEmployees Int?
-  createdAt    DateTime       @default(now())
+  createdAt    DateTime         @default(now())
 
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Facility {
@@ -111,18 +117,20 @@ model ScheduleSlot {
 }
 
 model Booking {
-  id            String        @id @default(uuid())
-  userId        String
-  sectionId     String
-  slotId        String
-  totalPrice    Float
-  appliedAddons String[]      @default([])
-  status        BookingStatus @default(CONFIRMED)
-  createdAt     DateTime      @default(now())
+  id              String        @id @default(uuid())
+  userId          String
+  sectionId       String
+  slotId          String
+  totalPrice      Float
+  bonusPointsUsed Int           @default(0)
+  appliedAddons   String[]      @default([])
+  status          BookingStatus @default(CONFIRMED)
+  reminderSent    Boolean       @default(false)
+  createdAt       DateTime      @default(now())
 
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  section       SportSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  slot          ScheduleSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section         SportSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  slot            ScheduleSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
 }
 
 model Promotion {

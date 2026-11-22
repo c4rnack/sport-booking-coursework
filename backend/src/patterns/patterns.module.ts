@@ -8,6 +8,7 @@ import {
   NotificationManager,
 } from './observer/notification.observer';
 import { BookingFacade } from './facade/booking.facade';
+import { TrainingReminderService } from './observer/training-reminder.service';
 
 @Module({
   providers: [
@@ -17,12 +18,14 @@ import { BookingFacade } from './facade/booking.facade';
     EmailReminderNotifier,
     BonusAccrualObserver,
     NotificationManager,
+    TrainingReminderService,
     BookingFacade,
   ],
   exports: [
     LoyaltyCardFactory,
     MembershipFactory,
     NotificationManager,
+    TrainingReminderService,
     BookingFacade,
   ],
 })

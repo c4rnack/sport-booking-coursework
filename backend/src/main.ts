@@ -1,32 +1,33 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as fs from 'fs';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const uploadsDir = join(process.cwd(), 'uploads', 'avatars');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: true, credentials: true });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-    }),
-  );
+  app.enableCors({
+    origin: true,
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const config = new DocumentBuilder()
     .setTitle('Sports Hall & Section Booking API')
-    .setDescription('REST API')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
+  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
-
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`API running on http://localhost:${port}/api/docs`);
+  await app.listen(process.env.PORT || 3000);
 }
 bootstrap();

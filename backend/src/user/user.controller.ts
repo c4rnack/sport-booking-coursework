@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/auth.decorators';
 import type { JwtUserPayload } from '../auth/decorators/auth.decorators';
@@ -41,5 +55,30 @@ export class UserController {
   @Patch('me/notifications/:id/read')
   markRead(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
     return this.usersService.markNotificationRead(user.userId, id);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/avatars',
+        filename: (_req, file, cb) => {
+          const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+          cb(null, `avatar-${unique}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('Дозволені лише зображення (PNG, JPG, WEBP)'), false);
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 3 * 1024 * 1024 }, // до 3 МБ
+    }),
+  )
+  uploadAvatar(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Файл не передано');
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    return this.usersService.updateProfile(user.userId, { avatarUrl });
   }
 }

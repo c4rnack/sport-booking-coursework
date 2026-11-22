@@ -63,12 +63,14 @@ export class EmailReminderNotifier implements IObserver {
 
 @Injectable()
 export class BonusAccrualObserver implements IObserver {
+  private readonly PREMIUM_THRESHOLD = 300;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async update(event: string, payload: NotificationPayload): Promise<void> {
     if (event !== 'BOOKING_CONFIRMED' || !payload.userId || !payload.earnedPoints) return;
 
-    await this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: payload.userId },
       data: { bonusPoints: { increment: payload.earnedPoints } },
     });
@@ -81,6 +83,22 @@ export class BonusAccrualObserver implements IObserver {
         message: `Ви отримали +${payload.earnedPoints} бонусних балів за бронювання!`,
       },
     });
+
+    if (updatedUser.loyaltyTier === 'STANDARD' && updatedUser.bonusPoints >= this.PREMIUM_THRESHOLD) {
+      await this.prisma.user.update({
+        where: { id: updatedUser.id },
+        data: { loyaltyTier: 'PREMIUM' },
+      });
+
+      await this.prisma.notification.create({
+        data: {
+          userId: updatedUser.id,
+          eventType: 'LOYALTY_UPGRADED',
+          title: 'Вітаємо! Новий статус PREMIUM',
+          message: 'Ви накопичили 300+ балів! Тепер ви отримуєте -15% знижки, 10% кешбеку та безкоштовний доступ до басейну на секціях плавання.',
+        },
+      });
+    }
   }
 }
 
@@ -101,6 +119,10 @@ export class NotificationManager implements ISubject, OnModuleInit {
 
     this.subscribe('BOOKING_CANCELLED', this.inAppNotifier);
     this.subscribe('MEMBERSHIP_PURCHASED', this.inAppNotifier);
+    this.subscribe('MEMBERSHIP_UPDATED', this.inAppNotifier);
+
+    this.subscribe('TRAINING_REMINDER', this.inAppNotifier);
+    this.subscribe('TRAINING_REMINDER', this.emailReminderNotifier);
 
     this.subscribe('PROMOTION_PUBLISHED', this.inAppNotifier);
     this.subscribe('PROMOTION_PUBLISHED', this.emailReminderNotifier);

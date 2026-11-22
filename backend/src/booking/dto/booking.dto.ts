@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MembershipType } from '@prisma/client';
-import { IsArray, IsEnum, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsEnum, IsIn, IsOptional, IsString, IsUUID, IsBoolean } from 'class-validator';
 
 export class CreateBookingDto {
   @ApiProperty({ description: 'UUID часового слота' })
@@ -16,6 +16,11 @@ export class CreateBookingDto {
   @IsArray()
   @IsIn(['equipment', 'pool', 'trainer'], { each: true })
   addons?: ('equipment' | 'pool' | 'trainer')[];
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  useBonusPoints?: boolean;
 }
 
 export class PurchaseMembershipDto {

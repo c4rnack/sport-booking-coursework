@@ -27,4 +27,18 @@ export class BookingController {
   purchaseMembership(@CurrentUser() user: JwtUserPayload, @Body() dto: PurchaseMembershipDto) {
     return this.bookingFacade.purchaseMembership(user.userId, dto.type, dto.companyName);
   }
+
+  @Patch('memberships/:id/cancel')
+  cancelMembership(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
+    return this.bookingFacade.cancelMembership(id, user.userId);
+  }
+
+  @Patch('memberships/:id/upgrade')
+  upgradeMembership(
+    @CurrentUser() user: JwtUserPayload,
+    @Param('id') id: string,
+    @Body() dto: PurchaseMembershipDto,
+  ) {
+    return this.bookingFacade.upgradeMembership(id, user.userId, dto.type, dto.companyName);
+  }
 }

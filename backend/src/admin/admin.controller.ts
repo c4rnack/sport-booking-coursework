@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/auth.decorators';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards/auth.guards';
+import { TrainingReminderService } from '../patterns/observer/training-reminder.service';
 import { AdminService } from './admin.service';
 import {
   CreateFacilityDto,
@@ -20,7 +21,10 @@ import {
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly trainingReminderService: TrainingReminderService,
+  ) {}
 
   @Post('facilities')
   createFacility(@Body() dto: CreateFacilityDto) {
@@ -81,4 +85,10 @@ export class AdminController {
   updateUserLoyalty(@Param('id') id: string, @Body() dto: UpdateUserLoyaltyDto) {
     return this.adminService.updateUserLoyaltyTier(id, dto.loyaltyTier);
   }
+
+  // У AdminController (інжектни TrainingReminderService у конструктор)
+  @Post('reminders/trigger')
+  triggerReminders() {
+    return this.trainingReminderService.sendUpcomingReminders();
+}
 }
