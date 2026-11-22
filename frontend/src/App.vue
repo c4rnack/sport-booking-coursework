@@ -1,7 +1,22 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import { onMounted } from 'vue';
+import AppHeader from './components/AppHeader.vue';
+import { useAuthStore } from './store/auth';
+
+const auth = useAuthStore();
+
+onMounted(() => {
+  if (auth.token && !auth.user) {
+    auth.fetchProfile();
+  }
+});
 </script>
 
 <template>
-  <HelloWorld />
+  <div class="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
+    <AppHeader />
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+      <router-view />
+    </main>
+  </div>
 </template>
