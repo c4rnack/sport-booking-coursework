@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { LoyaltyCardFactory } from '../patterns/factory/loyalty-card.factory';
+import { MembershipFactory } from '../patterns/factory/membership.factory';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
@@ -8,7 +9,8 @@ export class UserService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyaltyCardFactory: LoyaltyCardFactory,
-  ) {}
+    private readonly membershipFactory: MembershipFactory,
+) {}
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -29,12 +31,36 @@ export class UserService {
     if (!user) throw new NotFoundException('User not found');
 
     const card = this.loyaltyCardFactory.createCard(user.loyaltyTier);
+    const now = new Date();
+    const activeList = await this.prisma.membership.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { price: 'desc' },
+    });
+    const activeRec = activeList.find((m) => m.type !== 'SINGLE' || (m.visitsLeft ?? 0) > 0) ?? null;
+    const activeModel = activeRec ? this.membershipFactory.createMembership(activeRec.type) : null;
+
     return {
       ...user,
       loyaltyBenefits: {
         tierName: card.getTierName(),
         freePoolAccess: card.hasFreePoolAccess(),
       },
+      activeMembership: activeRec && activeModel
+        ? {
+            id: activeRec.id,
+            type: activeRec.type,
+            visitsLeft: activeRec.visitsLeft,
+            expiresAt: activeRec.expiresAt,
+            coversBaseSession: activeModel.coversBaseSession(),
+            coversEquipment: activeModel.coversEquipment(),
+            coversPool: activeModel.coversPool(),
+            benefits: activeModel.getBenefits(),
+          }
+        : null,
     };
   }
 

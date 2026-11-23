@@ -1,6 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { BookingStatus, LoyaltyTier } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BookingStatus, LoyaltyTier, PromotionTarget } from '@prisma/client';
 import {
+  IsOptional,
   IsDateString,
   IsEnum,
   IsInt,
@@ -119,6 +120,15 @@ export class CreatePromotionDto {
   @ApiProperty({ example: '2026-12-31T23:59:59.000Z' })
   @IsDateString()
   validUntil: string;
+
+  @ApiProperty({ enum: PromotionTarget, example: PromotionTarget.SPORT_TYPE })
+  @IsEnum(PromotionTarget)
+  targetScope: PromotionTarget;
+
+  @ApiPropertyOptional({ example: 'swimming' })
+  @IsOptional()
+  @IsString()
+  targetSportType?: string;
 }
 
 export class UpdateBookingStatusDto {

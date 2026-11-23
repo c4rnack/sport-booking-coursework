@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { BookingStatus, LoyaltyTier, MembershipStatus, MembershipType } from '@prisma/client';
+import {
+  BookingStatus,
+  LoyaltyTier,
+  MembershipStatus,
+  MembershipType,
+  PromotionTarget,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   BaseBookingComponent,
@@ -16,6 +22,7 @@ export interface BookingRequestInput {
   slotId: string;
   addons?: ('equipment' | 'pool' | 'trainer')[];
   useBonusPoints?: boolean;
+  useMembership?: boolean;
 }
 
 @Injectable()
@@ -26,6 +33,49 @@ export class BookingFacade {
     private readonly membershipFactory: MembershipFactory,
     private readonly notificationManager: NotificationManager,
   ) {}
+
+  private async getBestSectionPromo(sportType: string) {
+    const now = new Date();
+    const promos = await this.prisma.promotion.findMany({
+      where: {
+        validUntil: { gte: now },
+        OR: [
+          { targetScope: PromotionTarget.ALL_SECTIONS },
+          {
+            targetScope: PromotionTarget.SPORT_TYPE,
+            targetSportType: { equals: sportType, mode: 'insensitive' },
+          },
+        ],
+      },
+      orderBy: { discountPercent: 'desc' },
+    });
+    return promos[0] ?? null;
+  }
+
+  private async getBestMembershipPromo() {
+    const now = new Date();
+    const promos = await this.prisma.promotion.findMany({
+      where: {
+        validUntil: { gte: now },
+        targetScope: PromotionTarget.MEMBERSHIPS,
+      },
+      orderBy: { discountPercent: 'desc' },
+    });
+    return promos[0] ?? null;
+  }
+
+  private async getActiveValidMembership(userId: string) {
+    const now = new Date();
+    const list = await this.prisma.membership.findMany({
+      where: {
+        userId,
+        status: MembershipStatus.ACTIVE,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { price: 'desc' },
+    });
+    return list.find((m) => m.type !== MembershipType.SINGLE || (m.visitsLeft ?? 0) > 0) ?? null;
+  }
 
   async createAndPayBooking(userId: string, req: BookingRequestInput) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -38,53 +88,73 @@ export class BookingFacade {
     if (!slot) throw new NotFoundException('Schedule slot not found');
     if (slot.availableSpots <= 0) throw new BadRequestException('No available spots left');
 
-    // Перевірка опції басейну: дозволена лише для секцій плавання
     const addons = req.addons ?? [];
     const isSwimming = slot.section.sportType.toLowerCase() === 'swimming';
     if (addons.includes('pool') && !isSwimming) {
       throw new BadRequestException('Доступ до басейну доступний лише для секцій плавання');
     }
 
-    // 1. Factory Method: отримуємо картку лояльності клієнта
     const loyaltyCard = this.loyaltyCardFactory.createCard(user.loyaltyTier);
+    const activeMembershipRecord = req.useMembership !== false
+      ? await this.getActiveValidMembership(user.id)
+      : null;
+    const membershipModel = activeMembershipRecord
+      ? this.membershipFactory.createMembership(activeMembershipRecord.type)
+      : null;
 
-    // 2. Decorator: динамічно накладаємо додаткові послуги
-    let component: IBookingComponent = new BaseBookingComponent(
-      slot.section.basePrice,
-      slot.section.title,
-    );
+    const basePrice = membershipModel?.coversBaseSession() ? 0 : slot.section.basePrice;
+    const baseTitle = membershipModel
+      ? `${slot.section.title} (Абонемент ${membershipModel.getType()})`
+      : slot.section.title;
+
+    let component: IBookingComponent = new BaseBookingComponent(basePrice, baseTitle);
 
     if (addons.includes('equipment')) {
-      component = new EquipmentRentalDecorator(component);
+      component = new EquipmentRentalDecorator(component, Boolean(membershipModel?.coversEquipment()));
     }
     if (addons.includes('pool') && isSwimming) {
-      component = new PoolAccessDecorator(component, loyaltyCard.hasFreePoolAccess());
+      const freeByPoolMembership = Boolean(membershipModel?.coversPool());
+      const freeByPremium = loyaltyCard.hasFreePoolAccess();
+      const reason = freeByPoolMembership ? `Абонемент ${membershipModel!.getType()}` : 'Картка PREMIUM';
+      component = new PoolAccessDecorator(component, freeByPoolMembership || freeByPremium, reason);
     }
     if (addons.includes('trainer')) {
       component = new PersonalTrainerDecorator(component);
     }
-
-    // 3. Strategy: ціна зі знижкою картки лояльності
-    const strategy = loyaltyCard.getPricingStrategy();
+  
     const rawPrice = component.getCost();
-    const priceAfterTier = strategy.calculateFinalPrice(rawPrice);
+    const activePromo = await this.getBestSectionPromo(slot.section.sportType);
+    const promoDiscountPercent = activePromo ? activePromo.discountPercent : 0;
+    const priceAfterPromo = Number((rawPrice * (1 - promoDiscountPercent / 100)).toFixed(2));
 
-    // Списання накопичених бонусів (1 бал = 1 грн, максимум 50% вартості)
+    const strategy = loyaltyCard.getPricingStrategy();
+    const priceAfterTier = strategy.calculateFinalPrice(priceAfterPromo);
+
     let bonusPointsUsed = 0;
-    if (req.useBonusPoints && user.bonusPoints > 0) {
+    if (req.useBonusPoints && user.bonusPoints > 0 && priceAfterTier > 0) {
       const maxRedeemable = Math.floor(priceAfterTier * 0.5);
       bonusPointsUsed = Math.min(user.bonusPoints, maxRedeemable);
     }
 
     const totalPrice = Number((priceAfterTier - bonusPointsUsed).toFixed(2));
-    const earnedPoints = strategy.calculateBonusPoints(totalPrice);
+    const earnedPoints = totalPrice > 0 ? strategy.calculateBonusPoints(totalPrice) : 0;
 
-    // 4. Транзакція: резервуємо місце, списуємо бонуси (якщо обрано) і створюємо бронювання
     const booking = await this.prisma.$transaction(async (tx) => {
       await tx.scheduleSlot.update({
         where: { id: slot.id },
         data: { availableSpots: { decrement: 1 } },
       });
+
+      if (activeMembershipRecord?.type === MembershipType.SINGLE) {
+        const nextVisits = (activeMembershipRecord.visitsLeft ?? 1) - 1;
+        await tx.membership.update({
+          where: { id: activeMembershipRecord.id },
+          data: {
+            visitsLeft: nextVisits,
+            status: nextVisits <= 0 ? MembershipStatus.USED : MembershipStatus.ACTIVE,
+          },
+        });
+      }
 
       if (bonusPointsUsed > 0) {
         await tx.user.update({
@@ -99,6 +169,8 @@ export class BookingFacade {
           sectionId: slot.sectionId,
           slotId: slot.id,
           totalPrice,
+          promoDiscountPercent,
+          usedMembershipType: activeMembershipRecord?.type ?? null,
           bonusPointsUsed,
           appliedAddons: addons,
           status: BookingStatus.CONFIRMED,
@@ -107,12 +179,11 @@ export class BookingFacade {
       });
     });
 
-    // 5. Observer: сповіщення клієнта + нарахування бонусів (та автоапгрейд до PREMIUM)
     await this.notificationManager.notify('BOOKING_CONFIRMED', {
       userId: user.id,
       email: user.email,
       title: 'Бронювання підтверджено',
-      message: `${component.getDescription()} на ${slot.startTime.toLocaleString('uk-UA')}. Оплачено: ${totalPrice} грн.`,
+      message: `${component.getDescription()} на ${slot.startTime.toLocaleString('uk-UA')}. До сплати: ${totalPrice} грн.`,
       earnedPoints,
     });
 
@@ -121,8 +192,12 @@ export class BookingFacade {
       breakdown: {
         description: component.getDescription(),
         rawPrice,
+        promoTitle: activePromo?.title ?? null,
+        promoDiscountPercent,
+        priceAfterPromo,
         priceAfterTier,
         bonusPointsUsed,
+        usedMembershipType: activeMembershipRecord?.type ?? null,
         finalPrice: totalPrice,
         loyaltyTier: loyaltyCard.getTierName(),
         earnedPoints,
@@ -135,12 +210,8 @@ export class BookingFacade {
       where: { id: bookingId },
       include: { user: true, section: true },
     });
-    if (!booking || booking.userId !== userId) {
-      throw new NotFoundException('Booking not found');
-    }
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestException('Booking is already cancelled');
-    }
+    if (!booking || booking.userId !== userId) throw new NotFoundException('Booking not found');
+    if (booking.status === BookingStatus.CANCELLED) throw new BadRequestException('Booking is already cancelled');
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.scheduleSlot.update({
@@ -148,7 +219,6 @@ export class BookingFacade {
         data: { availableSpots: { increment: 1 } },
       });
 
-      // Повертаємо бонуси, якщо клієнт списував їх при цьому бронюванні
       if (booking.bonusPointsUsed > 0) {
         await tx.user.update({
           where: { id: booking.userId },
@@ -176,13 +246,17 @@ export class BookingFacade {
     const membershipObj = this.membershipFactory.createMembership(type, companyName);
     const meta = membershipObj.getMetadata();
 
+    const promo = await this.getBestMembershipPromo();
+    const discountPct = promo ? promo.discountPercent : 0;
+    const finalPrice = Number((membershipObj.getPrice() * (1 - discountPct / 100)).toFixed(2));
+
     const saved = await this.prisma.$transaction(async (tx) => {
       const created = await tx.membership.create({
         data: {
           userId,
           type: membershipObj.getType(),
           status: MembershipStatus.ACTIVE,
-          price: membershipObj.getPrice(),
+          price: finalPrice,
           visitsLeft: meta.visitsLeft ?? null,
           expiresAt: meta.expiresAt,
           companyName: meta.companyName ?? null,
@@ -203,19 +277,17 @@ export class BookingFacade {
     await this.notificationManager.notify('MEMBERSHIP_PURCHASED', {
       userId,
       title: 'Абонемент активовано',
-      message: `Оформлено абонемент типу ${saved.type} вартістю ${saved.price} грн.`,
+      message: `Оформлено абонемент ${saved.type} за ${saved.price} грн${discountPct ? ` (з урахуванням акції -${discountPct}%)` : ''}.`,
     });
 
     return saved;
   }
 
   async cancelMembership(membershipId: string, userId: string) {
-    const membership = await this.prisma.membership.findFirst({
-      where: { id: membershipId, userId },
-    });
+    const membership = await this.prisma.membership.findFirst({ where: { id: membershipId, userId } });
     if (!membership) throw new NotFoundException('Абонемент не знайдено');
-    if (membership.status === MembershipStatus.CANCELLED) {
-      throw new BadRequestException('Абонемент уже скасовано');
+    if (membership.status !== MembershipStatus.ACTIVE) {
+      throw new BadRequestException('Скасувати можна лише активний абонемент');
     }
 
     const updated = await this.prisma.membership.update({
@@ -248,22 +320,24 @@ export class BookingFacade {
       where: { id: membershipId, userId, status: MembershipStatus.ACTIVE },
     });
     if (!current) throw new NotFoundException('Активний абонемент не знайдено');
-
     if (rank[targetType] <= rank[current.type]) {
       throw new BadRequestException('Можна підвищити лише до вищого тарифу (SINGLE → MONTHLY → CORPORATE)');
     }
 
-    // Factory Method створює конфігурацію нового рівня абонемента
     const upgradedObj = this.membershipFactory.createMembership(targetType, companyName);
     const meta = upgradedObj.getMetadata();
-    const extraToPay = Math.max(0, upgradedObj.getPrice() - current.price);
+
+    const promo = await this.getBestMembershipPromo();
+    const discountPct = promo ? promo.discountPercent : 0;
+    const targetFinalPrice = Number((upgradedObj.getPrice() * (1 - discountPct / 100)).toFixed(2));
+    const extraToPay = Math.max(0, Number((targetFinalPrice - current.price).toFixed(2)));
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const m = await tx.membership.update({
         where: { id: current.id },
         data: {
           type: upgradedObj.getType(),
-          price: upgradedObj.getPrice(),
+          price: targetFinalPrice,
           visitsLeft: meta.visitsLeft ?? null,
           expiresAt: meta.expiresAt,
           companyName: meta.companyName ?? null,
@@ -284,7 +358,7 @@ export class BookingFacade {
     await this.notificationManager.notify('MEMBERSHIP_UPDATED', {
       userId,
       title: `Абонемент підвищено до ${targetType}`,
-      message: `Тариф оновлено з ${current.type} до ${targetType}. Доплата склала ${extraToPay} грн.`,
+      message: `Тариф оновлено з ${current.type} до ${targetType}. Доплата: ${extraToPay} грн.`,
     });
 
     return { membership: updated, extraToPay };

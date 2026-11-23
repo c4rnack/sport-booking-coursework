@@ -31,35 +31,41 @@ export abstract class BookingDecorator implements IBookingComponent {
 }
 
 export class EquipmentRentalDecorator extends BookingDecorator {
-  constructor(wrappee: IBookingComponent, private readonly equipmentFee = 120) {
+  constructor(
+    wrappee: IBookingComponent,
+    private readonly isFreeByMembership = false,
+    private readonly equipmentFee = 120,
+  ) {
     super(wrappee);
   }
 
   getCost(): number {
-    return this.wrappee.getCost() + this.equipmentFee;
+    return this.wrappee.getCost() + (this.isFreeByMembership ? 0 : this.equipmentFee);
   }
 
   getDescription(): string {
-    return `${this.wrappee.getDescription()} + Equipment Rental`;
+    const suffix = this.isFreeByMembership ? ' (Включено в абонемент)' : '';
+    return `${this.wrappee.getDescription()} + Інвентар${suffix}`;
   }
 }
 
 export class PoolAccessDecorator extends BookingDecorator {
   constructor(
     wrappee: IBookingComponent,
-    private readonly isFreeForPremium: boolean,
+    private readonly isFree: boolean,
+    private readonly freeReason = 'Premium / Абонемент',
     private readonly poolFee = 180,
   ) {
     super(wrappee);
   }
 
   getCost(): number {
-    return this.wrappee.getCost() + (this.isFreeForPremium ? 0 : this.poolFee);
+    return this.wrappee.getCost() + (this.isFree ? 0 : this.poolFee);
   }
 
   getDescription(): string {
-    const suffix = this.isFreeForPremium ? ' (Free with Premium Card)' : '';
-    return `${this.wrappee.getDescription()} + Pool Access${suffix}`;
+    const suffix = this.isFree ? ` (0 грн — ${this.freeReason})` : '';
+    return `${this.wrappee.getDescription()} + Басейн${suffix}`;
   }
 }
 
@@ -73,6 +79,6 @@ export class PersonalTrainerDecorator extends BookingDecorator {
   }
 
   getDescription(): string {
-    return `${this.wrappee.getDescription()} + Personal Trainer`;
+    return `${this.wrappee.getDescription()} + Персональний тренер`;
   }
 }

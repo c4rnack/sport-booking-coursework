@@ -86,7 +86,6 @@ export class AdminController {
     return this.adminService.updateUserLoyaltyTier(id, dto.loyaltyTier);
   }
 
-  // У AdminController (інжектни TrainingReminderService у конструктор)
   @Post('reminders/trigger')
   triggerReminders() {
     return this.trainingReminderService.sendUpcomingReminders();

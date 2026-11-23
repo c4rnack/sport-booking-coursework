@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BookingStatus, LoyaltyTier } from '@prisma/client';
+import { BookingStatus, LoyaltyTier, PromotionTarget } from '@prisma/client';
 import { NotificationManager } from '../patterns/observer/notification.observer';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -70,6 +70,8 @@ export class AdminService {
         description: dto.description,
         discountPercent: dto.discountPercent,
         validUntil: new Date(dto.validUntil),
+        targetScope: dto.targetScope,
+        targetSportType: dto.targetScope === PromotionTarget.SPORT_TYPE ? dto.targetSportType : null,
       },
     });
 
