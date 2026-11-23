@@ -81,8 +81,8 @@ const onlineAdvantages = [
     icon: Bell,
   },
   {
-    title: 'Гнучкі абонементи',
-    description: 'Разові, місячні та корпоративні тарифи з можливістю миттєвого підвищення рівня або скасування в кабінеті.',
+    title: 'Абонементи з реальним доступом',
+    description: 'Разові, місячні та корпоративні абонементи покривають вхід на заняття, оренду інвентарю та басейн.',
     icon: CreditCard,
   },
   {
@@ -100,6 +100,22 @@ const sectionCountBySport = computed(() => {
   }
   return counts;
 });
+
+function getPromoScopeLabel(promo: Promotion) {
+  if (promo.targetScope === 'MEMBERSHIPS') return 'На абонементи';
+  if (promo.targetScope === 'SPORT_TYPE') return `Напрямок: ${promo.targetSportType}`;
+  return 'Усі секції';
+}
+
+function getPromoRoute(promo: Promotion) {
+  if (promo.targetScope === 'MEMBERSHIPS') {
+    return auth.isAuthenticated ? { path: '/profile', query: { tab: 'memberships' } } : { path: '/auth' };
+  }
+  if (promo.targetScope === 'SPORT_TYPE' && promo.targetSportType) {
+    return { path: '/catalog', query: { sportType: promo.targetSportType } };
+  }
+  return { path: '/catalog' };
+}
 
 onMounted(async () => {
   const [pRes, fRes, sRes, tRes] = await Promise.allSettled([
@@ -119,7 +135,6 @@ onMounted(async () => {
 <template>
   <div class="space-y-16 pb-6">
     <section class="relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 px-6 py-14 md:px-14 md:py-20">
-
       <div class="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-purple-600/25 blur-3xl"></div>
       <div class="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-orange-500/20 blur-3xl"></div>
 
@@ -202,7 +217,7 @@ onMounted(async () => {
             <div class="flex items-center justify-between gap-2 mb-4">
               <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-300 uppercase tracking-wider">
                 <Sparkles class="w-4 h-4 text-orange-400" />
-                Акція
+                {{ getPromoScopeLabel(promo) }}
               </span>
               <span class="px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-orange-500 text-white text-sm font-black shadow">
                 -{{ promo.discountPercent }}%
@@ -217,7 +232,7 @@ onMounted(async () => {
             <span class="text-zinc-400">
               Діє до: <b class="text-zinc-200">{{ new Date(promo.validUntil).toLocaleDateString('uk-UA') }}</b>
             </span>
-            <router-link to="/catalog" class="text-orange-400 font-semibold hover:underline inline-flex items-center gap-1">
+            <router-link :to="getPromoRoute(promo)" class="text-orange-400 font-semibold hover:underline inline-flex items-center gap-1">
               Скористатись <ArrowRight class="w-3.5 h-3.5" />
             </router-link>
           </div>

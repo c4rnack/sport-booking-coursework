@@ -2,7 +2,16 @@
 import { onMounted, reactive, ref } from 'vue';
 import { BellRing, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/api';
-import type { BookingRecord, BookingStatus, Facility, LoyaltyTier, SportSection, Trainer, UserProfile } from '../types';
+import type {
+  BookingRecord,
+  BookingStatus,
+  Facility,
+  LoyaltyTier,
+  PromotionTarget,
+  SportSection,
+  Trainer,
+  UserProfile,
+} from '../types';
 
 const tab = ref<'entities' | 'promos' | 'bookings' | 'users'>('entities');
 
@@ -18,7 +27,21 @@ const facilityForm = reactive({ name: '', address: '', sportType: 'fitness', cap
 const trainerForm = reactive({ fullName: '', specialization: '', rating: 5 });
 const sectionForm = reactive({ title: '', sportType: 'yoga', skillLevel: 'beginner', ageCategory: 'adult', basePrice: 350, facilityId: '', trainerId: '' });
 const slotForm = reactive({ sectionId: '', startTime: '', endTime: '', availableSpots: 10 });
-const promoForm = reactive({ title: '', description: '', discountPercent: 15, validUntil: '' });
+const promoForm = reactive<{
+  title: string;
+  description: string;
+  discountPercent: number;
+  targetScope: PromotionTarget;
+  targetSportType: string;
+  validUntil: string;
+}>({
+  title: '',
+  description: '',
+  discountPercent: 15,
+  targetScope: 'ALL_SECTIONS',
+  targetSportType: 'swimming',
+  validUntil: '',
+});
 
 function notifyToast(msg: string) {
   toast.value = msg;
@@ -91,12 +114,16 @@ async function addSlot() {
 
 async function publishPromo() {
   await api.post('/admin/promotions', {
-    ...promoForm,
+    title: promoForm.title,
+    description: promoForm.description,
+    discountPercent: promoForm.discountPercent,
+    targetScope: promoForm.targetScope,
+    targetSportType: promoForm.targetScope === 'SPORT_TYPE' ? promoForm.targetSportType : undefined,
     validUntil: new Date(promoForm.validUntil).toISOString(),
   });
   promoForm.title = '';
   promoForm.description = '';
-  notifyToast('Акцію опубліковано та розіслано клієнтам!');
+  notifyToast('Акцію опубліковано, знижку активовано та розіслано клієнтам!');
 }
 
 async function triggerReminders() {
@@ -127,7 +154,7 @@ onMounted(loadAll);
 <template>
   <div class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
-      <h1 class="text-2xl font-bold text-zinc-100">Адмін-панель мережі спортцентрів</h1>
+      <h1 class="text-2xl font-bold text-zinc-100">Адмін-панель мережі PULSAR</h1>
       <div class="flex flex-wrap gap-2">
         <button @click="tab = 'entities'" :class="tab === 'entities' ? 'bg-gradient-to-r from-purple-600 to-orange-500 text-white' : 'bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-purple-500/50'" class="px-4 py-2 rounded-xl text-sm font-medium cursor-pointer">
           Сутності й розклад
@@ -354,6 +381,27 @@ onMounted(loadAll);
 
         <div class="grid grid-cols-2 gap-3">
           <div>
+            <label class="block text-xs text-zinc-400 mb-1">На що діє знижка</label>
+            <select v-model="promoForm.targetScope" class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100">
+              <option value="ALL_SECTIONS">На всі секції каталогу</option>
+              <option value="SPORT_TYPE">На конкретний вид спорту</option>
+              <option value="MEMBERSHIPS">На абонементи</option>
+            </select>
+          </div>
+
+          <div v-if="promoForm.targetScope === 'SPORT_TYPE'">
+            <label class="block text-xs text-zinc-400 mb-1">Вид спорту</label>
+            <select v-model="promoForm.targetSportType" class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100">
+              <option value="football">Футбол</option>
+              <option value="yoga">Йога</option>
+              <option value="fitness">Фітнес</option>
+              <option value="swimming">Плавання</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
             <label class="block text-xs text-zinc-400 mb-1">Розмір знижки (%)</label>
             <input v-model.number="promoForm.discountPercent" type="number" min="1" max="90" required class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100" />
           </div>
@@ -367,7 +415,7 @@ onMounted(loadAll);
           Опублікувати та сповістити клієнтів
         </button>
       </form>
-\
+
       <div class="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 space-y-4">
         <div class="flex items-center gap-2 text-orange-400">
           <BellRing class="w-5 h-5" />

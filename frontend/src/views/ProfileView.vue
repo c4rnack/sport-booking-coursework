@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Bell, CreditCard, History, Upload, User } from 'lucide-vue-next';
+import { Bell, Check, CreditCard, History, Sparkles, Upload, User } from 'lucide-vue-next';
 import { api, resolveAvatarUrl } from '../api/api';
 import LoyaltyCard from '../components/LoyaltyCard.vue';
 import { useAuthStore } from '../store/auth';
-import type { BookingRecord, MembershipRecord, MembershipType } from '../types';
+import type { BookingRecord, MembershipRecord, MembershipType, Promotion } from '../types';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -13,6 +13,7 @@ const route = useRoute();
 const activeTab = ref<'bookings' | 'memberships' | 'profile' | 'notifications'>('bookings');
 const bookings = ref<BookingRecord[]>([]);
 const memberships = ref<MembershipRecord[]>([]);
+const membershipPromo = ref<Promotion | null>(null);
 const saveMessage = ref('');
 const actionError = ref('');
 const companyName = ref('');
@@ -25,6 +26,50 @@ const profileForm = reactive({
   preferencesText: '',
 });
 
+const membershipPlans = [
+  {
+    type: 'SINGLE' as MembershipType,
+    name: 'Разовий пропуск',
+    subtitle: '1 візит • діє 7 днів',
+    basePrice: 400,
+    highlight: false,
+    perks: [
+      'Безкоштовний вхід на 1 будь-яку секцію чи зал',
+      'Оренда спортивного інвентарю включена (0 грн)',
+      'Ідеально для пробного відвідування',
+    ],
+  },
+  {
+    type: 'MONTHLY' as MembershipType,
+    name: 'Місячний безліміт',
+    subtitle: 'Безліміт • діє 30 днів',
+    basePrice: 2200,
+    highlight: true,
+    perks: [
+      'Необмежений вхід до всіх залів та секцій мережі',
+      'Безкоштовна оренда інвентарю на кожне заняття',
+      'Безкоштовний доступ до басейну на плаванні',
+    ],
+  },
+  {
+    type: 'CORPORATE' as MembershipType,
+    name: 'Корпоративний',
+    subtitle: 'До 10 осіб • діє 90 днів',
+    basePrice: 12000,
+    highlight: false,
+    perks: [
+      'Усі привілеї безліміту (зали, секції, інвентар, басейн)',
+      'Командний доступ для до 10 співробітників',
+      'Автоматична картка CORPORATE (-20% на тренера)',
+    ],
+  },
+];
+
+function getPlanPrice(basePrice: number) {
+  if (!membershipPromo.value) return basePrice;
+  return Number((basePrice * (1 - membershipPromo.value.discountPercent / 100)).toFixed(2));
+}
+
 async function loadCabinet() {
   actionError.value = '';
   await auth.fetchProfile();
@@ -36,13 +81,20 @@ async function loadCabinet() {
     profileForm.preferencesText = (auth.user.preferences || []).join(', ');
   }
 
-  const [bRes, mRes] = await Promise.allSettled([
+  const [bRes, mRes, pRes] = await Promise.allSettled([
     api.get<BookingRecord[]>('/user/me/bookings'),
     api.get<MembershipRecord[]>('/user/me/memberships'),
+    api.get<Promotion[]>('/catalog/promotions'),
   ]);
 
   if (bRes.status === 'fulfilled') bookings.value = bRes.value.data;
   if (mRes.status === 'fulfilled') memberships.value = mRes.value.data;
+  if (pRes.status === 'fulfilled') {
+    const memPromos = pRes.value.data
+      .filter((p) => p.targetScope === 'MEMBERSHIPS')
+      .sort((a, b) => b.discountPercent - a.discountPercent);
+    membershipPromo.value = memPromos[0] ?? null;
+  }
 }
 
 async function cancelBooking(id: string) {
@@ -141,7 +193,9 @@ async function saveProfile() {
 watch(
   () => route.query.tab,
   (tab) => {
-    if (tab === 'notifications') activeTab.value = 'notifications';
+    if (tab === 'notifications' || tab === 'memberships' || tab === 'profile' || tab === 'bookings') {
+      activeTab.value = tab;
+    }
   },
   { immediate: true },
 );
@@ -151,7 +205,6 @@ onMounted(loadCabinet);
 
 <template>
   <div class="grid lg:grid-cols-4 gap-6">
-    <!-- Ліва колонка -->
     <div class="lg:col-span-1 space-y-4">
       <LoyaltyCard :user="auth.user" />
 
@@ -172,20 +225,32 @@ onMounted(loadCabinet);
       </div>
     </div>
 
-    <!-- Права колонка -->
     <div class="lg:col-span-3 bg-zinc-900 rounded-2xl border border-zinc-800 p-6">
       <div v-if="actionError" class="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/40 text-orange-300 text-sm">
         {{ actionError }}
       </div>
 
-      <!-- Історія бронювань -->
       <div v-if="activeTab === 'bookings'" class="space-y-4">
         <h2 class="text-xl font-bold text-zinc-100">Історія бронювань</h2>
         <p v-if="!bookings.length" class="text-sm text-zinc-500">Ви ще не бронювали тренувань.</p>
         <div v-for="b in bookings" :key="b.id" class="p-4 bg-zinc-950 border border-zinc-800 rounded-xl flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h3 class="font-bold text-zinc-100">{{ b.section.title }}</h3>
-            <p class="text-xs text-zinc-400">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-bold text-zinc-100">{{ b.section.title }}</h3>
+              <span
+                v-if="b.usedMembershipType"
+                class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30"
+              >
+                Абонемент {{ b.usedMembershipType }}
+              </span>
+              <span
+                v-if="b.promoDiscountPercent && b.promoDiscountPercent > 0"
+                class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30"
+              >
+                Акція -{{ b.promoDiscountPercent }}%
+              </span>
+            </div>
+            <p class="text-xs text-zinc-400 mt-0.5">
               {{ b.section.facility.name }} • {{ new Date(b.slot.startTime).toLocaleString('uk-UA') }}
             </p>
             <p v-if="b.appliedAddons.length" class="text-xs text-purple-400 mt-1">
@@ -214,43 +279,74 @@ onMounted(loadCabinet);
         </div>
       </div>
 
-      <!-- Управління абонементами -->
       <div v-if="activeTab === 'memberships'" class="space-y-6">
-        <h2 class="text-xl font-bold text-zinc-100">Управління абонементами</h2>
+        <div>
+          <h2 class="text-xl font-bold text-zinc-100">Управління абонементами</h2>
+          <p class="text-xs text-zinc-400 mt-1">
+            Активний абонемент автоматично застосовується при бронюванні в каталозі та обнуляє вартість входу й включених послуг.
+          </p>
+        </div>
+
+        <div
+          v-if="membershipPromo"
+          class="p-3.5 rounded-xl bg-gradient-to-r from-purple-700/40 to-orange-500/20 border border-orange-500/40 text-sm flex flex-wrap items-center justify-between gap-2"
+        >
+          <span class="flex items-center gap-2">
+            <Sparkles class="w-4 h-4 text-orange-400 shrink-0" />
+            <span>
+              <b class="text-orange-300">Акція «{{ membershipPromo.title }}»:</b>
+              <span class="text-zinc-200 ml-1">{{ membershipPromo.description }}</span>
+            </span>
+          </span>
+          <span class="px-2.5 py-0.5 rounded-full bg-orange-500 text-zinc-950 font-bold text-xs shrink-0">
+            -{{ membershipPromo.discountPercent }}%
+          </span>
+        </div>
 
         <div class="grid md:grid-cols-3 gap-4">
-          <div class="p-4 bg-zinc-950 border border-zinc-800 rounded-xl flex flex-col justify-between">
+          <div
+            v-for="plan in membershipPlans"
+            :key="plan.type"
+            class="p-5 bg-zinc-950 rounded-2xl flex flex-col justify-between"
+            :class="plan.highlight ? 'border-2 border-orange-500/70 shadow-lg shadow-purple-950/30' : 'border border-zinc-800'"
+          >
             <div>
-              <h3 class="font-bold text-zinc-100">Разовий (SINGLE)</h3>
-              <p class="text-xs text-zinc-400 mt-1">1 відвідування, діє 7 днів</p>
-              <p class="text-2xl font-bold text-orange-400 mt-3">400 грн</p>
-            </div>
-            <button @click="buyMembership('SINGLE')" class="mt-4 w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded-lg transition cursor-pointer">
-              Оформити
-            </button>
-          </div>
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-bold text-zinc-100">{{ plan.name }}</h3>
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                  {{ plan.type }}
+                </span>
+              </div>
+              <p class="text-xs text-zinc-400 mt-1">{{ plan.subtitle }}</p>
 
-          <div class="p-4 bg-zinc-950 border-2 border-orange-500/70 rounded-xl flex flex-col justify-between">
-            <div>
-              <h3 class="font-bold text-zinc-100">Місячний (MONTHLY)</h3>
-              <p class="text-xs text-zinc-400 mt-1">Безліміт на 30 днів</p>
-              <p class="text-2xl font-bold text-orange-400 mt-3">2 200 грн</p>
-            </div>
-            <button @click="buyMembership('MONTHLY')" class="mt-4 w-full py-2 bg-gradient-to-r from-purple-600 to-orange-500 hover:opacity-90 text-white text-sm font-semibold rounded-lg transition cursor-pointer">
-              Оформити
-            </button>
-          </div>
+              <ul class="mt-4 space-y-2 text-xs text-zinc-300">
+                <li v-for="perk in plan.perks" :key="perk" class="flex items-start gap-2">
+                  <Check class="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+                  <span>{{ perk }}</span>
+                </li>
+              </ul>
 
-          <div class="p-4 bg-zinc-950 border border-zinc-800 rounded-xl flex flex-col justify-between">
-            <div>
-              <h3 class="font-bold text-zinc-100">Корпоративний</h3>
-              <p class="text-xs text-zinc-400 mt-1">До 10 осіб на 90 днів + картка CORPORATE (-20%)</p>
-              <input v-model="companyName" placeholder="Назва компанії" class="mt-2 w-full px-2.5 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100" />
-              <p class="text-2xl font-bold text-orange-400 mt-2">12 000 грн</p>
+              <input
+                v-if="plan.type === 'CORPORATE'"
+                v-model="companyName"
+                placeholder="Назва вашої компанії"
+                class="mt-3 w-full px-2.5 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100"
+              />
             </div>
-            <button @click="buyMembership('CORPORATE')" class="mt-4 w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded-lg transition cursor-pointer">
-              Оформити
-            </button>
+
+            <div class="mt-5 pt-4 border-t border-zinc-800">
+              <div class="flex items-baseline gap-2 mb-3">
+                <span class="text-2xl font-bold text-orange-400">{{ getPlanPrice(plan.basePrice) }} грн</span>
+                <span v-if="membershipPromo" class="text-xs text-zinc-500 line-through">{{ plan.basePrice }} грн</span>
+              </div>
+              <button
+                @click="buyMembership(plan.type)"
+                class="w-full py-2 text-white text-sm font-semibold rounded-xl transition cursor-pointer"
+                :class="plan.highlight ? 'bg-gradient-to-r from-purple-600 to-orange-500 hover:opacity-90' : 'bg-purple-600 hover:bg-purple-500'"
+              >
+                Оформити {{ plan.type }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -269,14 +365,17 @@ onMounted(loadCabinet);
                 <span v-if="m.companyName" class="text-zinc-400 text-xs">({{ m.companyName }})</span>
                 <span
                   class="px-2 py-0.5 text-[11px] rounded-full font-semibold border"
-                  :class="m.status === 'ACTIVE' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-zinc-800 text-zinc-500 border-zinc-700'"
+                  :class="m.status === 'ACTIVE' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : m.status === 'USED' ? 'bg-orange-500/15 text-orange-300 border-orange-500/30' : 'bg-zinc-800 text-zinc-500 border-zinc-700'"
                 >
                   {{ m.status }}
                 </span>
               </div>
               <p class="text-xs text-zinc-400 mt-1">
-                Вартість: <b class="text-orange-400">{{ m.price }} грн</b> •
+                Сплачено: <b class="text-orange-400">{{ m.price }} грн</b> •
                 Діє до: {{ m.expiresAt ? new Date(m.expiresAt).toLocaleDateString('uk-UA') : '—' }}
+                <span v-if="m.type === 'SINGLE' && m.visitsLeft !== null && m.visitsLeft !== undefined">
+                  • Залишилось візитів: <b class="text-zinc-200">{{ m.visitsLeft }}</b>
+                </span>
               </p>
             </div>
 
@@ -306,7 +405,6 @@ onMounted(loadCabinet);
         </div>
       </div>
 
-      <!-- Сповіщення -->
       <div v-if="activeTab === 'notifications'" class="space-y-3">
         <h2 class="text-xl font-bold text-zinc-100">Центр сповіщень</h2>
         <p v-if="!auth.notifications.length" class="text-sm text-zinc-500">Сповіщень поки немає.</p>
@@ -332,7 +430,6 @@ onMounted(loadCabinet);
         </div>
       </div>
 
-      <!-- Редагування профілю та фото -->
       <div v-if="activeTab === 'profile'" class="max-w-md space-y-4">
         <h2 class="text-xl font-bold text-zinc-100">Налаштування профілю</h2>
 

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CheckCircle2, X } from 'lucide-vue-next';
+import { CheckCircle2, CreditCard, Sparkles, X } from 'lucide-vue-next';
 import { api } from '../api/api';
 import { useAuthStore } from '../store/auth';
-import type { AddonType, ScheduleSlot, SportSection } from '../types';
+import type { AddonType, Promotion, ScheduleSlot, SportSection } from '../types';
 
 const props = defineProps<{
   section: SportSection;
+  promotions?: Promotion[];
 }>();
 
 const emit = defineEmits<{
@@ -18,12 +19,25 @@ const auth = useAuthStore();
 
 const selectedSlotId = ref<string>(props.section.slots[0]?.id || '');
 const selectedAddons = ref<AddonType[]>([]);
+const useMembership = ref(Boolean(auth.user?.activeMembership));
 const useBonusPoints = ref(false);
 const bookingResult = ref<any>(null);
 const bookingError = ref('');
 const bookingLoading = ref(false);
 
 const isSwimming = computed(() => props.section.sportType.toLowerCase() === 'swimming');
+const activeMem = computed(() => auth.user?.activeMembership ?? null);
+
+const bestPromo = computed(() => {
+  const list = (props.promotions || []).filter(
+    (p) =>
+      p.targetScope === 'ALL_SECTIONS' ||
+      (p.targetScope === 'SPORT_TYPE' &&
+        p.targetSportType?.toLowerCase() === props.section.sportType.toLowerCase()),
+  );
+  if (!list.length) return null;
+  return [...list].sort((a, b) => b.discountPercent - a.discountPercent)[0];
+});
 
 function toggleAddon(addon: AddonType) {
   const idx = selectedAddons.value.indexOf(addon);
@@ -33,22 +47,29 @@ function toggleAddon(addon: AddonType) {
 
 const estimatedPrice = computed(() => {
   const tier = auth.user?.loyaltyTier || 'STANDARD';
-  const freePool = tier === 'PREMIUM';
+  const applyingMem = useMembership.value && activeMem.value ? activeMem.value : null;
 
-  let raw = props.section.basePrice;
-  if (selectedAddons.value.includes('equipment')) raw += 120;
+  const freeEquipment = Boolean(applyingMem?.coversEquipment);
+  const freePool = Boolean(applyingMem?.coversPool) || tier === 'PREMIUM';
+  const freePoolLabel = applyingMem?.coversPool ? `0 грн (${applyingMem.type})` : '0 грн (Premium)';
+
+  let raw = applyingMem?.coversBaseSession ? 0 : props.section.basePrice;
+  if (selectedAddons.value.includes('equipment') && !freeEquipment) raw += 120;
   if (isSwimming.value && selectedAddons.value.includes('pool') && !freePool) raw += 180;
   if (selectedAddons.value.includes('trainer')) raw += 350;
 
+  const promoPct = bestPromo.value?.discountPercent ?? 0;
+  const afterPromo = Number((raw * (1 - promoPct / 100)).toFixed(2));
+
   const discountPct = tier === 'CORPORATE' ? 20 : tier === 'PREMIUM' ? 15 : 0;
-  const afterTier = Number((raw * (1 - discountPct / 100)).toFixed(2));
+  const afterTier = Number((afterPromo * (1 - discountPct / 100)).toFixed(2));
 
   const availablePoints = auth.user?.bonusPoints ?? 0;
   const maxRedeemable = Math.floor(afterTier * 0.5);
-  const bonusDiscount = useBonusPoints.value ? Math.min(availablePoints, maxRedeemable) : 0;
+  const bonusDiscount = useBonusPoints.value && afterTier > 0 ? Math.min(availablePoints, maxRedeemable) : 0;
   const final = Number((afterTier - bonusDiscount).toFixed(2));
 
-  return { raw, discountPct, afterTier, bonusDiscount, maxRedeemable, final, freePool };
+  return { raw, promoPct, discountPct, bonusDiscount, maxRedeemable, final, freeEquipment, freePool, freePoolLabel };
 });
 
 async function confirmBooking() {
@@ -63,6 +84,7 @@ async function confirmBooking() {
     const { data } = await api.post('/bookings', {
       slotId: selectedSlotId.value,
       addons: addonsToSend,
+      useMembership: useMembership.value,
       useBonusPoints: useBonusPoints.value,
     });
     bookingResult.value = data;
@@ -84,7 +106,7 @@ function formatSlot(slot: ScheduleSlot) {
 
 <template>
   <div class="fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
       <button @click="emit('close')" class="absolute top-4 right-4 text-zinc-500 hover:text-orange-400 cursor-pointer">
         <X class="w-5 h-5" />
       </button>
@@ -92,6 +114,26 @@ function formatSlot(slot: ScheduleSlot) {
       <template v-if="!bookingResult">
         <h2 class="text-xl font-bold text-zinc-100">{{ section.title }}</h2>
         <p class="text-sm text-zinc-400 mb-4">{{ section.facility.name }}</p>
+
+        <!-- Використання активного абонемента -->
+        <label
+          v-if="activeMem"
+          class="flex items-start justify-between gap-3 p-3.5 mb-4 bg-gradient-to-r from-purple-950/60 to-zinc-950 border border-purple-500/40 rounded-xl cursor-pointer"
+        >
+          <span class="flex items-start gap-2.5 text-sm">
+            <input type="checkbox" v-model="useMembership" class="accent-orange-500 mt-1" />
+            <span>
+              <span class="font-semibold text-purple-200 flex items-center gap-1.5">
+                <CreditCard class="w-4 h-4 text-orange-400" />
+                Використати абонемент {{ activeMem.type }}
+              </span>
+              <span class="block text-xs text-zinc-400 mt-0.5">
+                Покриває вхід на заняття (0 грн) та інвентар{{ activeMem.coversPool ? ' + басейн' : '' }}.
+                <span v-if="activeMem.type === 'SINGLE'">Залишилось візитів: {{ activeMem.visitsLeft }}.</span>
+              </span>
+            </span>
+          </span>
+        </label>
 
         <div class="mb-4">
           <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">Оберіть дату та час</label>
@@ -110,7 +152,9 @@ function formatSlot(slot: ScheduleSlot) {
                 <input type="checkbox" class="accent-orange-500" :checked="selectedAddons.includes('equipment')" @change="toggleAddon('equipment')" />
                 Оренда спортивного інвентарю
               </span>
-              <span class="text-sm font-semibold text-orange-400">+120 грн</span>
+              <span class="text-sm font-semibold" :class="estimatedPrice.freeEquipment ? 'text-purple-400' : 'text-orange-400'">
+                {{ estimatedPrice.freeEquipment ? '0 грн (Абонемент)' : '+120 грн' }}
+              </span>
             </label>
 
             <label
@@ -122,7 +166,7 @@ function formatSlot(slot: ScheduleSlot) {
                 Доступ до басейну
               </span>
               <span class="text-sm font-semibold" :class="estimatedPrice.freePool ? 'text-purple-400' : 'text-orange-400'">
-                {{ estimatedPrice.freePool ? '0 грн (Premium)' : '+180 грн' }}
+                {{ estimatedPrice.freePool ? estimatedPrice.freePoolLabel : '+180 грн' }}
               </span>
             </label>
 
@@ -137,7 +181,7 @@ function formatSlot(slot: ScheduleSlot) {
         </div>
 
         <label
-          v-if="(auth.user?.bonusPoints ?? 0) > 0"
+          v-if="(auth.user?.bonusPoints ?? 0) > 0 && estimatedPrice.maxRedeemable > 0"
           class="flex items-center justify-between p-3 mb-4 bg-purple-950/30 border border-purple-500/30 rounded-xl cursor-pointer hover:border-orange-500/50 transition"
         >
           <span class="flex items-center gap-2.5 text-sm text-purple-200">
@@ -151,8 +195,14 @@ function formatSlot(slot: ScheduleSlot) {
 
         <div class="bg-zinc-950 border border-zinc-800 p-4 rounded-xl mb-4 space-y-1.5 text-sm">
           <div class="flex justify-between text-zinc-400">
-            <span>Сума без знижки:</span>
+            <span>Базова сума до знижок:</span>
             <span>{{ estimatedPrice.raw }} грн</span>
+          </div>
+          <div v-if="bestPromo && estimatedPrice.raw > 0" class="flex justify-between text-orange-300">
+            <span class="inline-flex items-center gap-1">
+              <Sparkles class="w-3.5 h-3.5" /> Акція «{{ bestPromo.title }}»:
+            </span>
+            <span>-{{ bestPromo.discountPercent }}%</span>
           </div>
           <div class="flex justify-between text-purple-400">
             <span>Картка лояльності ({{ auth.user?.loyaltyTier }}):</span>
@@ -175,7 +225,7 @@ function formatSlot(slot: ScheduleSlot) {
           :disabled="bookingLoading"
           class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-orange-500 text-white rounded-xl font-semibold hover:opacity-95 disabled:opacity-50 cursor-pointer"
         >
-          {{ bookingLoading ? 'Обробка оплати...' : 'Оплатити та підтвердити бронювання' }}
+          {{ bookingLoading ? 'Обробка...' : estimatedPrice.final === 0 ? 'Підтвердити за абонементом (0 грн)' : 'Оплатити та підтвердити бронювання' }}
         </button>
       </template>
 
@@ -186,11 +236,14 @@ function formatSlot(slot: ScheduleSlot) {
         <div class="bg-purple-500/15 border border-purple-500/30 text-purple-200 p-3 rounded-xl text-sm space-y-1">
           <p>
             Оплачено: <b class="text-orange-300">{{ bookingResult.breakdown.finalPrice }} грн</b>
-            <span v-if="bookingResult.breakdown.bonusPointsUsed > 0">
-              (списано {{ bookingResult.breakdown.bonusPointsUsed }} б.)
+            <span v-if="bookingResult.breakdown.promoDiscountPercent > 0">
+              (акція -{{ bookingResult.breakdown.promoDiscountPercent }}%)
             </span>
           </p>
-          <p>
+          <p v-if="bookingResult.breakdown.bonusPointsUsed > 0">
+            Списано бонусів: <b class="text-orange-300">{{ bookingResult.breakdown.bonusPointsUsed }} б.</b>
+          </p>
+          <p v-if="bookingResult.breakdown.earnedPoints > 0">
             Нараховано кешбеку: <b class="text-orange-300">+{{ bookingResult.breakdown.earnedPoints }} бонусних балів</b>
           </p>
         </div>

@@ -58,6 +58,15 @@ function openBooking(section: SportSection) {
   selectedSection.value = section;
 }
 
+watch(
+  () => route.query.sportType,
+  (val) => {
+    if (typeof val === 'string' && val !== filters.sportType) {
+      filters.sportType = val;
+    }
+  },
+);
+
 watch(filters, loadCatalog);
 onMounted(loadCatalog);
 </script>
@@ -89,6 +98,7 @@ onMounted(loadCatalog);
         v-for="sec in sections"
         :key="sec.id"
         :section="sec"
+        :promotions="promotions"
         @book="openBooking"
       />
     </div>
@@ -96,6 +106,7 @@ onMounted(loadCatalog);
     <BookingModal
       v-if="selectedSection"
       :section="selectedSection"
+      :promotions="promotions"
       @close="selectedSection = null"
       @booked="loadCatalog"
     />

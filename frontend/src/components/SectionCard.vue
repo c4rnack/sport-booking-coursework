@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Calendar, MapPin, Star, UserCheck } from 'lucide-vue-next';
-import type { SportSection } from '../types';
+import { Calendar, MapPin, Sparkles, Star, UserCheck } from 'lucide-vue-next';
+import type { Promotion, SportSection } from '../types';
 
 const props = defineProps<{
   section: SportSection;
+  promotions?: Promotion[];
 }>();
 
 const emit = defineEmits<{
@@ -14,15 +15,40 @@ const emit = defineEmits<{
 const totalAvailableSpots = computed(() =>
   props.section.slots.reduce((sum, s) => sum + s.availableSpots, 0),
 );
+
+const bestPromo = computed(() => {
+  const list = (props.promotions || []).filter(
+    (p) =>
+      p.targetScope === 'ALL_SECTIONS' ||
+      (p.targetScope === 'SPORT_TYPE' &&
+        p.targetSportType?.toLowerCase() === props.section.sportType.toLowerCase()),
+  );
+  if (!list.length) return null;
+  return list.sort((a, b) => b.discountPercent - a.discountPercent)[0];
+});
+
+const discountedPrice = computed(() => {
+  if (!bestPromo.value) return props.section.basePrice;
+  return Number((props.section.basePrice * (1 - bestPromo.value.discountPercent / 100)).toFixed(2));
+});
 </script>
 
 <template>
-  <div class="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 flex flex-col justify-between hover:border-purple-500/60 hover:shadow-lg hover:shadow-purple-950/30 transition">
+  <div class="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 flex flex-col justify-between hover:border-purple-500/60 hover:shadow-lg hover:shadow-purple-950/30 transition relative">
     <div>
       <div class="flex items-center justify-between gap-2 mb-3">
-        <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 uppercase">
-          {{ section.sportType }}
-        </span>
+        <div class="flex items-center gap-1.5">
+          <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 uppercase">
+            {{ section.sportType }}
+          </span>
+          <span
+            v-if="bestPromo"
+            :title="bestPromo.title"
+            class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-full bg-gradient-to-r from-purple-600 to-orange-500 text-white"
+          >
+            <Sparkles class="w-3 h-3" /> -{{ bestPromo.discountPercent }}%
+          </span>
+        </div>
         <span class="text-xs text-zinc-400">{{ section.skillLevel }} • {{ section.ageCategory }}</span>
       </div>
 
@@ -52,8 +78,11 @@ const totalAvailableSpots = computed(() =>
 
     <div class="mt-5 pt-4 border-t border-zinc-800 flex items-center justify-between">
       <div>
-        <span class="text-xs text-zinc-500 block">Базова ціна</span>
-        <span class="text-xl font-bold text-orange-400">{{ section.basePrice }} грн</span>
+        <span class="text-xs text-zinc-500 block">{{ bestPromo ? 'Ціна за акцією' : 'Базова ціна' }}</span>
+        <div class="flex items-baseline gap-2">
+          <span class="text-xl font-bold text-orange-400">{{ discountedPrice }} грн</span>
+          <span v-if="bestPromo" class="text-xs text-zinc-500 line-through">{{ section.basePrice }} грн</span>
+        </div>
       </div>
       <button
         @click="emit('book', section)"
