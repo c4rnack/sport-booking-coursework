@@ -5,6 +5,7 @@ import {
   MembershipType,
   PrismaClient,
   UserRole,
+  PromotionTarget,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -479,20 +480,26 @@ async function main() {
     data: [
       {
         title: 'Зимовий заряд на плавання',
-        description: 'Отримайте -20% на всі абонементи та ранкові секції в Аквакомплексі «Хвиля»!',
+        description: 'Автоматична знижка -20% на всі секції плавання в Аквакомплексі «Хвиля»!',
         discountPercent: 20,
+        targetScope: PromotionTarget.SPORT_TYPE,
+        targetSportType: 'swimming',
         validUntil: daysFromNow(30, 23, 59),
       },
       {
-        title: 'Приведи друга на CrossFit',
-        description: 'Знижка -15% на парні вечірні тренування у фітнес-клубі «Імпульс».',
+        title: 'Драйв на фітнес та CrossFit',
+        description: 'Знижка -15% на всі тренування напрямку фітнес у клубі «Імпульс».',
         discountPercent: 15,
+        targetScope: PromotionTarget.SPORT_TYPE,
+        targetSportType: 'fitness',
         validUntil: daysFromNow(21, 23, 59),
       },
       {
-        title: 'Сімейний вікенд у «Старті»',
-        description: 'Додаткові бонуси та -10% на дитячі секції футболу й плавання у суботу та неділю.',
+        title: 'Вигідний старт на абонементи',
+        description: 'Знижка -10% при оформленні або підвищенні будь-якого абонемента PULSAR.',
         discountPercent: 10,
+        targetScope: PromotionTarget.MEMBERSHIPS,
+        targetSportType: null,
         validUntil: daysFromNow(45, 23, 59),
       },
     ],

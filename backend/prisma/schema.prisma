@@ -26,7 +26,14 @@ enum MembershipType {
 
 enum MembershipStatus {
   ACTIVE
+  USED
   CANCELLED
+}
+
+enum PromotionTarget {
+  ALL_SECTIONS
+  SPORT_TYPE
+  MEMBERSHIPS
 }
 
 enum BookingStatus {
@@ -117,29 +124,33 @@ model ScheduleSlot {
 }
 
 model Booking {
-  id              String        @id @default(uuid())
-  userId          String
-  sectionId       String
-  slotId          String
-  totalPrice      Float
-  bonusPointsUsed Int           @default(0)
-  appliedAddons   String[]      @default([])
-  status          BookingStatus @default(CONFIRMED)
-  reminderSent    Boolean       @default(false)
-  createdAt       DateTime      @default(now())
+  id                   String          @id @default(uuid())
+  userId               String
+  sectionId            String
+  slotId               String
+  totalPrice           Float
+  promoDiscountPercent Float           @default(0)
+  usedMembershipType   MembershipType?
+  bonusPointsUsed      Int             @default(0)
+  appliedAddons        String[]        @default([])
+  status               BookingStatus   @default(CONFIRMED)
+  reminderSent         Boolean         @default(false)
+  createdAt            DateTime        @default(now())
 
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  section         SportSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  slot            ScheduleSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section              SportSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  slot                 ScheduleSlot    @relation(fields: [slotId], references: [id], onDelete: Cascade)
 }
 
 model Promotion {
-  id              String   @id @default(uuid())
+  id              String          @id @default(uuid())
   title           String
   description     String
   discountPercent Float
+  targetScope     PromotionTarget @default(ALL_SECTIONS)
+  targetSportType String?         // 'football' | 'yoga' | 'fitness' | 'swimming'
   validUntil      DateTime
-  createdAt       DateTime @default(now())
+  createdAt       DateTime        @default(now())
 }
 
 model Notification {
