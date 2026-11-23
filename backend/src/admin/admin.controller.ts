@@ -12,6 +12,11 @@ import {
   CreateSlotDto,
   CreateTrainerDto,
   UpdateBookingStatusDto,
+  UpdateFacilityDto,
+  UpdatePromotionDto,
+  UpdateSectionDto,
+  UpdateSlotDto,
+  UpdateTrainerDto,
   UpdateUserLoyaltyDto,
 } from './dto/admin.dto';
 
@@ -31,6 +36,11 @@ export class AdminController {
     return this.adminService.createFacility(dto);
   }
 
+  @Patch('facilities/:id')
+  updateFacility(@Param('id') id: string, @Body() dto: UpdateFacilityDto) {
+    return this.adminService.updateFacility(id, dto);
+  }
+
   @Delete('facilities/:id')
   deleteFacility(@Param('id') id: string) {
     return this.adminService.deleteFacility(id);
@@ -39,6 +49,11 @@ export class AdminController {
   @Post('trainers')
   createTrainer(@Body() dto: CreateTrainerDto) {
     return this.adminService.createTrainer(dto);
+  }
+
+  @Patch('trainers/:id')
+  updateTrainer(@Param('id') id: string, @Body() dto: UpdateTrainerDto) {
+    return this.adminService.updateTrainer(id, dto);
   }
 
   @Delete('trainers/:id')
@@ -51,9 +66,19 @@ export class AdminController {
     return this.adminService.createSection(dto);
   }
 
+  @Patch('sections/:id')
+  updateSection(@Param('id') id: string, @Body() dto: UpdateSectionDto) {
+    return this.adminService.updateSection(id, dto);
+  }
+
   @Delete('sections/:id')
   deleteSection(@Param('id') id: string) {
     return this.adminService.deleteSection(id);
+  }
+
+  @Get('slots')
+  getAllSlots() {
+    return this.adminService.getAllSlots();
   }
 
   @Post('slots')
@@ -61,9 +86,39 @@ export class AdminController {
     return this.adminService.createSlot(dto);
   }
 
+  @Patch('slots/:id')
+  updateSlot(@Param('id') id: string, @Body() dto: UpdateSlotDto) {
+    return this.adminService.updateSlot(id, dto);
+  }
+
+  @Delete('slots/:id')
+  deleteSlot(@Param('id') id: string) {
+    return this.adminService.deleteSlot(id);
+  }
+
+  @Get('promotions')
+  getAllPromotions() {
+    return this.adminService.getAllPromotions();
+  }
+
   @Post('promotions')
   publishPromotion(@Body() dto: CreatePromotionDto) {
     return this.adminService.publishPromotion(dto);
+  }
+
+  @Patch('promotions/:id')
+  updatePromotion(@Param('id') id: string, @Body() dto: UpdatePromotionDto) {
+    return this.adminService.updatePromotion(id, dto);
+  }
+
+  @Delete('promotions/:id')
+  deletePromotion(@Param('id') id: string) {
+    return this.adminService.deletePromotion(id);
+  }
+
+  @Post('reminders/trigger')
+  triggerReminders() {
+    return this.trainingReminderService.sendUpcomingReminders();
   }
 
   @Get('bookings')
@@ -85,9 +140,4 @@ export class AdminController {
   updateUserLoyalty(@Param('id') id: string, @Body() dto: UpdateUserLoyaltyDto) {
     return this.adminService.updateUserLoyaltyTier(id, dto.loyaltyTier);
   }
-
-  @Post('reminders/trigger')
-  triggerReminders() {
-    return this.trainingReminderService.sendUpcomingReminders();
-}
 }

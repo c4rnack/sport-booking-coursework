@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { BellRing, Trash2 } from 'lucide-vue-next';
+import { BellRing, Pencil, Trash2, X } from 'lucide-vue-next';
 import { api } from '../api/api';
 import type {
   BookingRecord,
   BookingStatus,
   Facility,
   LoyaltyTier,
+  Promotion,
   PromotionTarget,
+  ScheduleSlot,
   SportSection,
   Trainer,
   UserProfile,
@@ -18,10 +20,19 @@ const tab = ref<'entities' | 'promos' | 'bookings' | 'users'>('entities');
 const facilities = ref<Facility[]>([]);
 const trainers = ref<Trainer[]>([]);
 const sections = ref<SportSection[]>([]);
+const slots = ref<ScheduleSlot[]>([]);
+const promotions = ref<Promotion[]>([]);
 const bookings = ref<BookingRecord[]>([]);
 const users = ref<UserProfile[]>([]);
+
 const toast = ref('');
 const triggeringReminders = ref(false);
+
+const editingFacilityId = ref<string | null>(null);
+const editingTrainerId = ref<string | null>(null);
+const editingSectionId = ref<string | null>(null);
+const editingSlotId = ref<string | null>(null);
+const editingPromoId = ref<string | null>(null);
 
 const facilityForm = reactive({ name: '', address: '', sportType: 'fitness', capacity: 20, baseHourlyRate: 500 });
 const trainerForm = reactive({ fullName: '', specialization: '', rating: 5 });
@@ -48,82 +59,235 @@ function notifyToast(msg: string) {
   setTimeout(() => (toast.value = ''), 4000);
 }
 
+function toDateTimeLocal(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toDateInput(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 async function loadAll() {
-  const [fRes, tRes, sRes, bRes, uRes] = await Promise.all([
+  const [fRes, tRes, sRes, slRes, pRes, bRes, uRes] = await Promise.all([
     api.get<Facility[]>('/catalog/facilities'),
     api.get<Trainer[]>('/catalog/trainers'),
     api.get<SportSection[]>('/catalog/sections'),
+    api.get<ScheduleSlot[]>('/admin/slots'),
+    api.get<Promotion[]>('/admin/promotions'),
     api.get<BookingRecord[]>('/admin/bookings'),
     api.get<UserProfile[]>('/admin/users'),
   ]);
   facilities.value = fRes.data;
   trainers.value = tRes.data;
   sections.value = sRes.data;
+  slots.value = slRes.data;
+  promotions.value = pRes.data;
   bookings.value = bRes.data;
   users.value = uRes.data;
 }
 
-async function addFacility() {
-  await api.post('/admin/facilities', facilityForm);
+function startEditFacility(f: Facility) {
+  editingFacilityId.value = f.id;
+  facilityForm.name = f.name;
+  facilityForm.address = f.address;
+  facilityForm.sportType = f.sportType;
+  facilityForm.capacity = f.capacity;
+  facilityForm.baseHourlyRate = f.baseHourlyRate;
+}
+
+function resetFacilityForm() {
+  editingFacilityId.value = null;
   facilityForm.name = '';
   facilityForm.address = '';
-  notifyToast('Зал додано!');
+  facilityForm.sportType = 'fitness';
+  facilityForm.capacity = 20;
+  facilityForm.baseHourlyRate = 500;
+}
+
+async function submitFacility() {
+  if (editingFacilityId.value) {
+    await api.patch(`/admin/facilities/${editingFacilityId.value}`, facilityForm);
+    notifyToast('Дані залу оновлено!');
+  } else {
+    await api.post('/admin/facilities', facilityForm);
+    notifyToast('Зал додано!');
+  }
+  resetFacilityForm();
   await loadAll();
 }
 
 async function removeFacility(id: string) {
+  if (editingFacilityId.value === id) resetFacilityForm();
   await api.delete(`/admin/facilities/${id}`);
+  notifyToast('Зал видалено');
   await loadAll();
 }
 
-async function addTrainer() {
-  await api.post('/admin/trainers', trainerForm);
+function startEditTrainer(t: Trainer) {
+  editingTrainerId.value = t.id;
+  trainerForm.fullName = t.fullName;
+  trainerForm.specialization = t.specialization;
+  trainerForm.rating = t.rating;
+}
+
+function resetTrainerForm() {
+  editingTrainerId.value = null;
   trainerForm.fullName = '';
   trainerForm.specialization = '';
-  notifyToast('Тренера додано!');
+  trainerForm.rating = 5;
+}
+
+async function submitTrainer() {
+  if (editingTrainerId.value) {
+    await api.patch(`/admin/trainers/${editingTrainerId.value}`, trainerForm);
+    notifyToast('Дані тренера оновлено!');
+  } else {
+    await api.post('/admin/trainers', trainerForm);
+    notifyToast('Тренера додано!');
+  }
+  resetTrainerForm();
   await loadAll();
 }
 
 async function removeTrainer(id: string) {
+  if (editingTrainerId.value === id) resetTrainerForm();
   await api.delete(`/admin/trainers/${id}`);
+  notifyToast('Тренера видалено');
   await loadAll();
 }
 
-async function addSection() {
-  await api.post('/admin/sections', sectionForm);
+function startEditSection(s: SportSection) {
+  editingSectionId.value = s.id;
+  sectionForm.title = s.title;
+  sectionForm.sportType = s.sportType;
+  sectionForm.skillLevel = s.skillLevel;
+  sectionForm.ageCategory = s.ageCategory;
+  sectionForm.basePrice = s.basePrice;
+  sectionForm.facilityId = s.facility.id;
+  sectionForm.trainerId = s.trainer.id;
+}
+
+function resetSectionForm() {
+  editingSectionId.value = null;
   sectionForm.title = '';
-  notifyToast('Секцію створено — клієнтам надіслано сповіщення!');
+  sectionForm.sportType = 'yoga';
+  sectionForm.skillLevel = 'beginner';
+  sectionForm.ageCategory = 'adult';
+  sectionForm.basePrice = 350;
+  sectionForm.facilityId = '';
+  sectionForm.trainerId = '';
+}
+
+async function submitSection() {
+  if (editingSectionId.value) {
+    await api.patch(`/admin/sections/${editingSectionId.value}`, sectionForm);
+    notifyToast('Секцію оновлено!');
+  } else {
+    await api.post('/admin/sections', sectionForm);
+    notifyToast('Секцію створено — клієнтам надіслано сповіщення!');
+  }
+  resetSectionForm();
   await loadAll();
 }
 
 async function removeSection(id: string) {
+  if (editingSectionId.value === id) resetSectionForm();
   await api.delete(`/admin/sections/${id}`);
+  notifyToast('Секцію видалено');
   await loadAll();
 }
 
-async function addSlot() {
-  await api.post('/admin/slots', {
+function startEditSlot(sl: ScheduleSlot) {
+  editingSlotId.value = sl.id;
+  slotForm.sectionId = sl.sectionId;
+  slotForm.startTime = toDateTimeLocal(sl.startTime);
+  slotForm.endTime = toDateTimeLocal(sl.endTime);
+  slotForm.availableSpots = sl.availableSpots;
+}
+
+function resetSlotForm() {
+  editingSlotId.value = null;
+  slotForm.sectionId = '';
+  slotForm.startTime = '';
+  slotForm.endTime = '';
+  slotForm.availableSpots = 10;
+}
+
+async function submitSlot() {
+  const payload = {
     sectionId: slotForm.sectionId,
     startTime: new Date(slotForm.startTime).toISOString(),
     endTime: new Date(slotForm.endTime).toISOString(),
     availableSpots: slotForm.availableSpots,
-  });
-  notifyToast('Часовий слот додано в розклад!');
+  };
+  if (editingSlotId.value) {
+    await api.patch(`/admin/slots/${editingSlotId.value}`, payload);
+    notifyToast('Слот у розкладі оновлено!');
+  } else {
+    await api.post('/admin/slots', payload);
+    notifyToast('Часовий слот додано в розклад!');
+  }
+  resetSlotForm();
   await loadAll();
 }
 
-async function publishPromo() {
-  await api.post('/admin/promotions', {
+async function removeSlot(id: string) {
+  if (editingSlotId.value === id) resetSlotForm();
+  await api.delete(`/admin/slots/${id}`);
+  notifyToast('Слот видалено');
+  await loadAll();
+}
+
+function startEditPromo(p: Promotion) {
+  editingPromoId.value = p.id;
+  promoForm.title = p.title;
+  promoForm.description = p.description;
+  promoForm.discountPercent = p.discountPercent;
+  promoForm.targetScope = p.targetScope;
+  promoForm.targetSportType = p.targetSportType || 'swimming';
+  promoForm.validUntil = toDateInput(p.validUntil);
+}
+
+function resetPromoForm() {
+  editingPromoId.value = null;
+  promoForm.title = '';
+  promoForm.description = '';
+  promoForm.discountPercent = 15;
+  promoForm.targetScope = 'ALL_SECTIONS';
+  promoForm.targetSportType = 'swimming';
+  promoForm.validUntil = '';
+}
+
+async function submitPromo() {
+  const payload = {
     title: promoForm.title,
     description: promoForm.description,
     discountPercent: promoForm.discountPercent,
     targetScope: promoForm.targetScope,
     targetSportType: promoForm.targetScope === 'SPORT_TYPE' ? promoForm.targetSportType : undefined,
-    validUntil: new Date(promoForm.validUntil).toISOString(),
-  });
-  promoForm.title = '';
-  promoForm.description = '';
-  notifyToast('Акцію опубліковано, знижку активовано та розіслано клієнтам!');
+    validUntil: new Date(`${promoForm.validUntil}T23:59:59`).toISOString(),
+  };
+
+  if (editingPromoId.value) {
+    await api.patch(`/admin/promotions/${editingPromoId.value}`, payload);
+    notifyToast('Акцію оновлено!');
+  } else {
+    await api.post('/admin/promotions', payload);
+    notifyToast('Акцію опубліковано, знижку активовано та розіслано клієнтам!');
+  }
+  resetPromoForm();
+  await loadAll();
+}
+
+async function removePromo(id: string) {
+  if (editingPromoId.value === id) resetPromoForm();
+  await api.delete(`/admin/promotions/${id}`);
+  notifyToast('Акцію видалено');
+  await loadAll();
 }
 
 async function triggerReminders() {
@@ -176,8 +340,19 @@ onMounted(loadAll);
     </div>
 
     <div v-if="tab === 'entities'" class="grid lg:grid-cols-2 gap-6">
-      <form @submit.prevent="addFacility" class="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 space-y-3">
-        <h2 class="font-bold text-purple-300">Додати спортивний зал</h2>
+      <form
+        @submit.prevent="submitFacility"
+        class="bg-zinc-900 p-5 rounded-2xl border space-y-3 transition"
+        :class="editingFacilityId ? 'border-orange-500/60' : 'border-zinc-800'"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold" :class="editingFacilityId ? 'text-orange-400' : 'text-purple-300'">
+            {{ editingFacilityId ? 'Редагувати спортивний зал' : 'Додати спортивний зал' }}
+          </h2>
+          <button v-if="editingFacilityId" type="button" @click="resetFacilityForm" class="text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 cursor-pointer">
+            <X class="w-3.5 h-3.5" /> Скасувати
+          </button>
+        </div>
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">Назва залу</label>
@@ -209,25 +384,46 @@ onMounted(loadAll);
           </div>
         </div>
 
-        <button class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold cursor-pointer">
-          Додати зал
+        <button class="px-4 py-2 text-white rounded-xl text-sm font-semibold cursor-pointer" :class="editingFacilityId ? 'bg-gradient-to-r from-purple-600 to-orange-500' : 'bg-purple-600 hover:bg-purple-500'">
+          {{ editingFacilityId ? 'Зберегти зміни' : 'Додати зал' }}
         </button>
 
-        <div class="pt-3 border-t border-zinc-800 space-y-1">
-          <div v-for="f in facilities" :key="f.id" class="flex justify-between items-center text-xs py-1 text-zinc-300">
+        <div class="pt-3 border-t border-zinc-800 space-y-1 max-h-48 overflow-y-auto pr-1">
+          <div
+            v-for="f in facilities"
+            :key="f.id"
+            class="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg text-zinc-300"
+            :class="editingFacilityId === f.id ? 'bg-orange-500/10 border border-orange-500/30' : ''"
+          >
             <span>
               <b class="text-zinc-100">{{ f.name }}</b> — {{ f.address }}
               <span class="text-zinc-500">({{ f.capacity }} місць, {{ f.baseHourlyRate }} грн/год)</span>
             </span>
-            <button type="button" @click="removeFacility(f.id)" class="text-orange-400 hover:text-orange-300 cursor-pointer">
-              <Trash2 class="w-4 h-4" />
-            </button>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" @click="startEditFacility(f)" title="Редагувати" class="text-purple-400 hover:text-purple-300 cursor-pointer">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button type="button" @click="removeFacility(f.id)" title="Видалити" class="text-orange-400 hover:text-orange-300 cursor-pointer">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </form>
 
-      <form @submit.prevent="addTrainer" class="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 space-y-3">
-        <h2 class="font-bold text-purple-300">Додати тренера</h2>
+      <form
+        @submit.prevent="submitTrainer"
+        class="bg-zinc-900 p-5 rounded-2xl border space-y-3 transition"
+        :class="editingTrainerId ? 'border-orange-500/60' : 'border-zinc-800'"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold" :class="editingTrainerId ? 'text-orange-400' : 'text-purple-300'">
+            {{ editingTrainerId ? 'Редагувати тренера' : 'Додати тренера' }}
+          </h2>
+          <button v-if="editingTrainerId" type="button" @click="resetTrainerForm" class="text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 cursor-pointer">
+            <X class="w-3.5 h-3.5" /> Скасувати
+          </button>
+        </div>
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">ПІБ тренера</label>
@@ -244,25 +440,46 @@ onMounted(loadAll);
           <input v-model.number="trainerForm.rating" type="number" step="0.1" min="1" max="5" required class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100" />
         </div>
 
-        <button class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold cursor-pointer">
-          Додати тренера
+        <button class="px-4 py-2 text-white rounded-xl text-sm font-semibold cursor-pointer" :class="editingTrainerId ? 'bg-gradient-to-r from-purple-600 to-orange-500' : 'bg-purple-600 hover:bg-purple-500'">
+          {{ editingTrainerId ? 'Зберегти зміни' : 'Додати тренера' }}
         </button>
 
-        <div class="pt-3 border-t border-zinc-800 space-y-1">
-          <div v-for="t in trainers" :key="t.id" class="flex justify-between items-center text-xs py-1 text-zinc-300">
+        <div class="pt-3 border-t border-zinc-800 space-y-1 max-h-48 overflow-y-auto pr-1">
+          <div
+            v-for="t in trainers"
+            :key="t.id"
+            class="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg text-zinc-300"
+            :class="editingTrainerId === t.id ? 'bg-orange-500/10 border border-orange-500/30' : ''"
+          >
             <span>
               <b class="text-zinc-100">{{ t.fullName }}</b> — {{ t.specialization }}
               <span class="text-orange-400 font-semibold">(★ {{ t.rating }})</span>
             </span>
-            <button type="button" @click="removeTrainer(t.id)" class="text-orange-400 hover:text-orange-300 cursor-pointer">
-              <Trash2 class="w-4 h-4" />
-            </button>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" @click="startEditTrainer(t)" title="Редагувати" class="text-purple-400 hover:text-purple-300 cursor-pointer">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button type="button" @click="removeTrainer(t.id)" title="Видалити" class="text-orange-400 hover:text-orange-300 cursor-pointer">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </form>
 
-      <form @submit.prevent="addSection" class="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 space-y-3">
-        <h2 class="font-bold text-purple-300">Створити секцію</h2>
+      <form
+        @submit.prevent="submitSection"
+        class="bg-zinc-900 p-5 rounded-2xl border space-y-3 transition"
+        :class="editingSectionId ? 'border-orange-500/60' : 'border-zinc-800'"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold" :class="editingSectionId ? 'text-orange-400' : 'text-purple-300'">
+            {{ editingSectionId ? 'Редагувати секцію' : 'Створити секцію' }}
+          </h2>
+          <button v-if="editingSectionId" type="button" @click="resetSectionForm" class="text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 cursor-pointer">
+            <X class="w-3.5 h-3.5" /> Скасувати
+          </button>
+        </div>
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">Назва секції</label>
@@ -318,22 +535,46 @@ onMounted(loadAll);
           </div>
         </div>
 
-        <button class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold cursor-pointer">
-          Створити секцію
+        <button class="px-4 py-2 text-white rounded-xl text-sm font-semibold cursor-pointer" :class="editingSectionId ? 'bg-gradient-to-r from-purple-600 to-orange-500' : 'bg-purple-600 hover:bg-purple-500'">
+          {{ editingSectionId ? 'Зберегти зміни' : 'Створити секцію' }}
         </button>
 
-        <div class="pt-3 border-t border-zinc-800 space-y-1">
-          <div v-for="s in sections" :key="s.id" class="flex justify-between items-center text-xs py-1 text-zinc-300">
-            <span><b class="text-zinc-100">{{ s.title }}</b> (<span class="text-orange-400">{{ s.basePrice }} грн</span>)</span>
-            <button type="button" @click="removeSection(s.id)" class="text-orange-400 hover:text-orange-300 cursor-pointer">
-              <Trash2 class="w-4 h-4" />
-            </button>
+        <div class="pt-3 border-t border-zinc-800 space-y-1 max-h-56 overflow-y-auto pr-1">
+          <div
+            v-for="s in sections"
+            :key="s.id"
+            class="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg text-zinc-300"
+            :class="editingSectionId === s.id ? 'bg-orange-500/10 border border-orange-500/30' : ''"
+          >
+            <span>
+              <b class="text-zinc-100">{{ s.title }}</b>
+              (<span class="text-orange-400">{{ s.basePrice }} грн</span>, {{ s.sportType }})
+            </span>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" @click="startEditSection(s)" title="Редагувати" class="text-purple-400 hover:text-purple-300 cursor-pointer">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button type="button" @click="removeSection(s.id)" title="Видалити" class="text-orange-400 hover:text-orange-300 cursor-pointer">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </form>
 
-      <form @submit.prevent="addSlot" class="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 space-y-3">
-        <h2 class="font-bold text-purple-300">Додати слот у розклад</h2>
+      <form
+        @submit.prevent="submitSlot"
+        class="bg-zinc-900 p-5 rounded-2xl border space-y-3 transition"
+        :class="editingSlotId ? 'border-orange-500/60' : 'border-zinc-800'"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold" :class="editingSlotId ? 'text-orange-400' : 'text-purple-300'">
+            {{ editingSlotId ? 'Редагувати часовий слот' : 'Додати слот у розклад' }}
+          </h2>
+          <button v-if="editingSlotId" type="button" @click="resetSlotForm" class="text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 cursor-pointer">
+            <X class="w-3.5 h-3.5" /> Скасувати
+          </button>
+        </div>
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">Секція</label>
@@ -356,18 +597,52 @@ onMounted(loadAll);
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">Кількість вільних місць у слоті</label>
-          <input v-model.number="slotForm.availableSpots" type="number" min="1" required class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100" />
+          <input v-model.number="slotForm.availableSpots" type="number" :min="editingSlotId ? 0 : 1" required class="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100" />
         </div>
 
-        <button class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold cursor-pointer">
-          Додати слот
+        <button class="px-4 py-2 text-white rounded-xl text-sm font-semibold cursor-pointer" :class="editingSlotId ? 'bg-gradient-to-r from-purple-600 to-orange-500' : 'bg-purple-600 hover:bg-purple-500'">
+          {{ editingSlotId ? 'Зберегти зміни' : 'Додати слот' }}
         </button>
+
+        <div class="pt-3 border-t border-zinc-800 space-y-1 max-h-56 overflow-y-auto pr-1">
+          <div
+            v-for="sl in slots"
+            :key="sl.id"
+            class="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg text-zinc-300"
+            :class="editingSlotId === sl.id ? 'bg-orange-500/10 border border-orange-500/30' : ''"
+          >
+            <span>
+              <b class="text-zinc-100">{{ sl.section?.title || 'Секція' }}</b> •
+              {{ new Date(sl.startTime).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+              <span class="text-orange-400">({{ sl.availableSpots }} місць)</span>
+            </span>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" @click="startEditSlot(sl)" title="Редагувати" class="text-purple-400 hover:text-purple-300 cursor-pointer">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button type="button" @click="removeSlot(sl.id)" title="Видалити" class="text-orange-400 hover:text-orange-300 cursor-pointer">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
 
     <div v-if="tab === 'promos'" class="grid lg:grid-cols-2 gap-6 items-start">
-      <form @submit.prevent="publishPromo" class="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 space-y-4">
-        <h2 class="text-lg font-bold text-purple-300">Публікація акції</h2>
+      <form
+        @submit.prevent="submitPromo"
+        class="bg-zinc-900 p-6 rounded-2xl border space-y-4 transition"
+        :class="editingPromoId ? 'border-orange-500/60' : 'border-zinc-800'"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold" :class="editingPromoId ? 'text-orange-400' : 'text-purple-300'">
+            {{ editingPromoId ? 'Редагувати акцію' : 'Публікація акції' }}
+          </h2>
+          <button v-if="editingPromoId" type="button" @click="resetPromoForm" class="text-xs text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1 cursor-pointer">
+            <X class="w-3.5 h-3.5" /> Скасувати
+          </button>
+        </div>
 
         <div>
           <label class="block text-xs text-zinc-400 mb-1">Заголовок акції</label>
@@ -412,8 +687,35 @@ onMounted(loadAll);
         </div>
 
         <button class="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-orange-500 text-white rounded-xl text-sm font-semibold cursor-pointer">
-          Опублікувати та сповістити клієнтів
+          {{ editingPromoId ? 'Зберегти зміни акції' : 'Опублікувати та сповістити клієнтів' }}
         </button>
+
+        <div class="pt-4 border-t border-zinc-800 space-y-2">
+          <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Існуючі акції ({{ promotions.length }})</p>
+          <div
+            v-for="p in promotions"
+            :key="p.id"
+            class="flex justify-between items-center text-xs p-2.5 rounded-xl bg-zinc-950 border"
+            :class="editingPromoId === p.id ? 'border-orange-500/50' : 'border-zinc-800'"
+          >
+            <div>
+              <span class="font-bold text-zinc-100">{{ p.title }}</span>
+              <span class="ml-1.5 px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">-{{ p.discountPercent }}%</span>
+              <p class="text-zinc-500 mt-0.5">
+                {{ p.targetScope === 'MEMBERSHIPS' ? 'Абонементи' : p.targetScope === 'SPORT_TYPE' ? `Спорт: ${p.targetSportType}` : 'Усі секції' }}
+                • до {{ new Date(p.validUntil).toLocaleDateString('uk-UA') }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+              <button type="button" @click="startEditPromo(p)" title="Редагувати" class="text-purple-400 hover:text-purple-300 cursor-pointer">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button type="button" @click="removePromo(p.id)" title="Видалити" class="text-orange-400 hover:text-orange-300 cursor-pointer">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
       </form>
 
       <div class="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 space-y-4">

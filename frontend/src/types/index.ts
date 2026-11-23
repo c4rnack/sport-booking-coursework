@@ -56,6 +56,7 @@ export interface ScheduleSlot {
   startTime: string;
   endTime: string;
   availableSpots: number;
+  section?: { id: string; title: string };
 }
 
 export interface SportSection {

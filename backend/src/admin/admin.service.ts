@@ -8,6 +8,11 @@ import {
   CreateSectionDto,
   CreateSlotDto,
   CreateTrainerDto,
+  UpdateFacilityDto,
+  UpdatePromotionDto,
+  UpdateSectionDto,
+  UpdateSlotDto,
+  UpdateTrainerDto,
 } from './dto/admin.dto';
 
 @Injectable()
@@ -21,12 +26,20 @@ export class AdminService {
     return this.prisma.facility.create({ data: dto });
   }
 
+  updateFacility(id: string, dto: UpdateFacilityDto) {
+    return this.prisma.facility.update({ where: { id }, data: dto });
+  }
+
   deleteFacility(id: string) {
     return this.prisma.facility.delete({ where: { id } });
   }
 
   createTrainer(dto: CreateTrainerDto) {
     return this.prisma.trainer.create({ data: dto });
+  }
+
+  updateTrainer(id: string, dto: UpdateTrainerDto) {
+    return this.prisma.trainer.update({ where: { id }, data: dto });
   }
 
   deleteTrainer(id: string) {
@@ -48,8 +61,25 @@ export class AdminService {
     return section;
   }
 
+  updateSection(id: string, dto: UpdateSectionDto) {
+    return this.prisma.sportSection.update({
+      where: { id },
+      data: dto,
+      include: { facility: true, trainer: true },
+    });
+  }
+
   deleteSection(id: string) {
     return this.prisma.sportSection.delete({ where: { id } });
+  }
+
+  getAllSlots() {
+    return this.prisma.scheduleSlot.findMany({
+      include: {
+        section: { select: { id: true, title: true } },
+      },
+      orderBy: { startTime: 'asc' },
+    });
   }
 
   createSlot(dto: CreateSlotDto) {
@@ -63,15 +93,37 @@ export class AdminService {
     });
   }
 
+  updateSlot(id: string, dto: UpdateSlotDto) {
+    return this.prisma.scheduleSlot.update({
+      where: { id },
+      data: {
+        sectionId: dto.sectionId,
+        startTime: dto.startTime ? new Date(dto.startTime) : undefined,
+        endTime: dto.endTime ? new Date(dto.endTime) : undefined,
+        availableSpots: dto.availableSpots,
+      },
+    });
+  }
+
+  deleteSlot(id: string) {
+    return this.prisma.scheduleSlot.delete({ where: { id } });
+  }
+
+  getAllPromotions() {
+    return this.prisma.promotion.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async publishPromotion(dto: CreatePromotionDto) {
     const promo = await this.prisma.promotion.create({
       data: {
         title: dto.title,
         description: dto.description,
         discountPercent: dto.discountPercent,
-        validUntil: new Date(dto.validUntil),
         targetScope: dto.targetScope,
         targetSportType: dto.targetScope === PromotionTarget.SPORT_TYPE ? dto.targetSportType : null,
+        validUntil: new Date(dto.validUntil),
       },
     });
 
@@ -82,6 +134,29 @@ export class AdminService {
     });
 
     return promo;
+  }
+
+  updatePromotion(id: string, dto: UpdatePromotionDto) {
+    return this.prisma.promotion.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        description: dto.description,
+        discountPercent: dto.discountPercent,
+        targetScope: dto.targetScope,
+        targetSportType:
+          dto.targetScope !== undefined
+            ? dto.targetScope === PromotionTarget.SPORT_TYPE
+              ? dto.targetSportType ?? null
+              : null
+            : dto.targetSportType,
+        validUntil: dto.validUntil ? new Date(dto.validUntil) : undefined,
+      },
+    });
+  }
+
+  deletePromotion(id: string) {
+    return this.prisma.promotion.delete({ where: { id } });
   }
 
   getAllBookings() {

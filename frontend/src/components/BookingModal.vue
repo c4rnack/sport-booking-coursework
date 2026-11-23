@@ -81,7 +81,7 @@ async function confirmBooking() {
       ? selectedAddons.value
       : selectedAddons.value.filter((a) => a !== 'pool');
 
-    const { data } = await api.post('/bookings', {
+    const { data } = await api.post('/booking', {
       slotId: selectedSlotId.value,
       addons: addonsToSend,
       useMembership: useMembership.value,
@@ -115,7 +115,6 @@ function formatSlot(slot: ScheduleSlot) {
         <h2 class="text-xl font-bold text-zinc-100">{{ section.title }}</h2>
         <p class="text-sm text-zinc-400 mb-4">{{ section.facility.name }}</p>
 
-        <!-- Використання активного абонемента -->
         <label
           v-if="activeMem"
           class="flex items-start justify-between gap-3 p-3.5 mb-4 bg-gradient-to-r from-purple-950/60 to-zinc-950 border border-purple-500/40 rounded-xl cursor-pointer"
