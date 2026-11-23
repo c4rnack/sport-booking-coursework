@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api/api';
 import BookingModal from '../components/BookingModal.vue';
 import CatalogFilters from '../components/CatalogFilters.vue';
@@ -10,6 +10,7 @@ import { useAuthStore } from '../store/auth';
 import type { Promotion, SportSection } from '../types';
 
 const auth = useAuthStore();
+const route = useRoute();
 const router = useRouter();
 
 const sections = ref<SportSection[]>([]);
@@ -18,7 +19,7 @@ const loading = ref(false);
 const selectedSection = ref<SportSection | null>(null);
 
 const filters = reactive({
-  sportType: '',
+  sportType: typeof route.query.sportType === 'string' ? route.query.sportType : '',
   skillLevel: '',
   ageCategory: '',
 });
@@ -46,6 +47,7 @@ function resetFilters() {
   filters.sportType = '';
   filters.skillLevel = '';
   filters.ageCategory = '';
+  router.replace({ path: '/catalog' });
 }
 
 function openBooking(section: SportSection) {
@@ -61,7 +63,12 @@ onMounted(loadCatalog);
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-5">
+    <div>
+      <h1 class="text-2xl font-bold text-zinc-100">Каталог залів та секцій</h1>
+      <p class="text-sm text-zinc-400 mt-0.5">Оберіть тренування за видом спорту, рівнем підготовки та віковою категорією</p>
+    </div>
+
     <PromoBanners :promotions="promotions" />
 
     <CatalogFilters

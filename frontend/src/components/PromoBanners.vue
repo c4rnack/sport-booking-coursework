@@ -8,23 +8,22 @@ defineProps<{
 </script>
 
 <template>
-  <div v-if="promotions.length" class="grid md:grid-cols-2 gap-4">
+  <div v-if="promotions.length" class="flex flex-wrap items-center gap-2.5">
+    <span class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400 mr-1">
+      <Sparkles class="w-3.5 h-3.5 text-orange-400" />
+      Акції:
+    </span>
+
     <div
       v-for="promo in promotions"
       :key="promo.id"
-      class="p-5 rounded-2xl bg-gradient-to-r from-purple-700 via-purple-600 to-orange-500 text-white flex items-start justify-between shadow-lg shadow-purple-950/40"
+      :title="promo.description"
+      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 border border-purple-500/30 hover:border-orange-500/50 transition text-xs"
     >
-      <div>
-        <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-orange-100 font-semibold">
-          <Sparkles class="w-4 h-4" />
-          <span>Акційна пропозиція</span>
-        </div>
-        <h3 class="font-bold text-lg mt-1">{{ promo.title }}</h3>
-        <p class="text-sm text-purple-100 mt-0.5">{{ promo.description }}</p>
-      </div>
-      <span class="px-3 py-1 rounded-full bg-zinc-950/30 border border-white/20 font-bold text-sm shrink-0">
+      <span class="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-purple-600 to-orange-500 text-white font-bold text-[11px]">
         -{{ promo.discountPercent }}%
       </span>
+      <span class="font-medium text-zinc-200">{{ promo.title }}</span>
     </div>
   </div>
 </template>
