@@ -1,6 +1,6 @@
 # PULSAR — Sports Facility & Section Booking Platform
 
-##A full-stack web application for managing and booking services across a network of sport centers. Built with **NestJS**, **Vue.js**, **PostgreSQL**, and **Prisma ORM**
+## A full-stack web application for managing and booking services across a network of sport centers. Built with **NestJS**, **Vue.js**, **PostgreSQL**, and **Prisma ORM**
 
 This project was developed for educational purposes for "Software Documentation and Design Patterns"
 
