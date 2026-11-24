@@ -21,6 +21,11 @@ export class CreateBookingDto {
   @IsOptional()
   @IsBoolean()
   useBonusPoints?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  useMembership?: boolean;
 }
 
 export class PurchaseMembershipDto {
