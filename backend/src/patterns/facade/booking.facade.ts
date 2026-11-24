@@ -95,7 +95,8 @@ export class BookingFacade {
     }
 
     const loyaltyCard = this.loyaltyCardFactory.createCard(user.loyaltyTier);
-    const activeMembershipRecord = req.useMembership !== false
+    const activeMembershipRecord =
+      req.useMembership === true
       ? await this.getActiveValidMembership(user.id)
       : null;
     const membershipModel = activeMembershipRecord

@@ -24,7 +24,7 @@ const bestPromo = computed(() => {
         p.targetSportType?.toLowerCase() === props.section.sportType.toLowerCase()),
   );
   if (!list.length) return null;
-  return list.sort((a, b) => b.discountPercent - a.discountPercent)[0];
+  return [...list].sort((a, b) => b.discountPercent - a.discountPercent)[0];
 });
 
 const discountedPrice = computed(() => {
@@ -34,7 +34,7 @@ const discountedPrice = computed(() => {
 </script>
 
 <template>
-  <div class="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 flex flex-col justify-between hover:border-purple-500/60 hover:shadow-lg hover:shadow-purple-950/30 transition relative">
+  <div class="bg-zinc-900 rounded-2xl border border-zinc-800 p-5 flex flex-col justify-between hover:border-purple-500/60 hover:shadow-lg hover:shadow-purple-950/30 transition">
     <div>
       <div class="flex items-center justify-between gap-2 mb-3">
         <div class="flex items-center gap-1.5">
