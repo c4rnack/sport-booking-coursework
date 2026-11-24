@@ -56,7 +56,7 @@ This project uses 5 GoF design patterns:
 
 ## How to run?
 
-###Prerequisities
+### Prerequisities
 * **Node.js** v18+ and **npm** v9+
 * **PostgreSQL** v14+ (local instance or cloud-hosted database)
 
