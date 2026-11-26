@@ -91,7 +91,7 @@ export class BookingFacade {
     const addons = req.addons ?? [];
     const isSwimming = slot.section.sportType.toLowerCase() === 'swimming';
     if (addons.includes('pool') && !isSwimming) {
-      throw new BadRequestException('Доступ до басейну доступний лише для секцій плавання');
+      throw new BadRequestException('Pool access for swimming sections only');
     }
 
     const loyaltyCard = this.loyaltyCardFactory.createCard(user.loyaltyTier);
